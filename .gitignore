@@ -45,6 +45,11 @@ yarn-error.log*
 # worker do pdf.js (copiado em predev/prebuild a partir de node_modules)
 /public/pdf.worker.min.mjs
 
+# modelos do Tesseract baixados em testes locais
+*.traineddata
+/ocr_*.png
+/ocr_*.txt
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

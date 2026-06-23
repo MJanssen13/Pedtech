@@ -36,10 +36,25 @@ export async function extractTextLayer(data: ArrayBuffer): Promise<string> {
   return partes.join("\n").replace(/[ \t]+/g, " ").trim();
 }
 
-/** Rasteriza cada página em um canvas (para OCR). */
+/** Binariza o canvas (cinza + limiar) — melhora muito o OCR de formulários. */
+function binarize(ctx: CanvasRenderingContext2D, w: number, h: number) {
+  const img = ctx.getImageData(0, 0, w, h);
+  const d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const g = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+    const v = g < 165 ? 0 : 255;
+    d[i] = d[i + 1] = d[i + 2] = v;
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+/**
+ * Rasteriza cada página em um canvas (para OCR). Escala 4 + binarização recupera
+ * linhas densas da ficha (peso/data) que se perdem em escalas menores.
+ */
 export async function rasterizePages(
   data: ArrayBuffer,
-  scale = 2.2,
+  scale = 4,
 ): Promise<HTMLCanvasElement[]> {
   const pdfjs = await getPdfjs();
   const task = pdfjs.getDocument({ data: data.slice(0) });
@@ -51,11 +66,12 @@ export async function rasterizePages(
     const canvas = document.createElement("canvas");
     canvas.width = Math.ceil(viewport.width);
     canvas.height = Math.ceil(viewport.height);
-    const canvasContext = canvas.getContext("2d")!;
+    const canvasContext = canvas.getContext("2d", { willReadFrequently: true })!;
     // Fundo branco ajuda o OCR.
     canvasContext.fillStyle = "#ffffff";
     canvasContext.fillRect(0, 0, canvas.width, canvas.height);
     await page.render({ canvasContext, viewport, canvas } as never).promise;
+    binarize(canvasContext, canvas.width, canvas.height);
     canvases.push(canvas);
   }
   await task.destroy();
