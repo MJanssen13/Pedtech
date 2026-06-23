@@ -69,23 +69,29 @@ function cleanDescricao(raw?: string): string | undefined {
   return clean(s);
 }
 
-/** Sorologias por data (funciona bem em texto; ignora tabela ruidosa de OCR). */
+/** Sorologias organizadas por data; mantém o cabeçalho de colunas quando existe. */
 function parseSorologias(flat: string): string | undefined {
   const region = flat.match(/SOROLOGIAS\s*(.+?)\s+Tratamento\s+s[íi]filis/i)?.[1];
   if (!region) return undefined;
-  const TESTE = /VDRL|HIV|HBS|HBSAG|TOXO|RUBE|RUB[ÉE]OLA|CMV|HTLV|HCV|HEPATITE|S[ÍI]FILIS|FTA/i;
+  const TESTE = /VDRL|HIV|HBS|TOXO|RUB[ÉE]?OLA|RUBE|CMV|HTLV|HCV|HEPATITE|S[ÍI]FILIS|FTA/gi;
+  const RESULT = /\b(NR|REAG|REAGENTE|NEG|POS|IMUNE|SUSCEPT|IND|INDETERMINAD)\b|1:\d/i;
   const re = /(\d{1,2}\/\d{1,2}\/\d{2,4})/g;
   const idx: { date: string; at: number }[] = [];
   let m: RegExpExecArray | null;
   while ((m = re.exec(region))) idx.push({ date: m[1], at: m.index });
+  if (!idx.length) return undefined;
   const linhas: string[] = [];
   for (let i = 0; i < idx.length; i++) {
     const ini = idx[i].at + idx[i].date.length;
     const fim = i + 1 < idx.length ? idx[i + 1].at : region.length;
     const corpo = region.slice(ini, fim).replace(/\s+/g, " ").trim().replace(/^[:\-\s]+/, "");
-    if (corpo && TESTE.test(corpo)) linhas.push(`${idx[i].date}: ${corpo}`);
+    if (corpo && (RESULT.test(corpo) || corpo.match(TESTE))) linhas.push(`${idx[i].date}: ${corpo}`);
   }
-  return linhas.length ? linhas.join("\n") : undefined;
+  if (!linhas.length) return undefined;
+  // cabeçalho de colunas (antes da 1ª data), se tiver ≥2 nomes de testes
+  const header = region.slice(0, idx[0].at).replace(/\bData\b/i, "").replace(/\s+/g, " ").trim();
+  const headOk = header.length > 0 && header.length <= 120 && (header.match(TESTE) ?? []).length >= 2;
+  return (headOk ? `${header}\n` : "") + linhas.join("\n");
 }
 
 export function parseFicha(text: string): FichaParse {
@@ -102,22 +108,23 @@ export function parseFicha(text: string): FichaParse {
   };
   const find = (re: RegExp) => lines.find((l) => re.test(l)) ?? "";
 
-  // ── Cabeçalho (linha "RN de: ... Nome do bebê: ...") ──
-  const head = find(/RN\s+de\s*:/i) || flat;
-  put("maeNome", clean(head.match(/RN\s+de\s*:?\s*(.+?)\s+Nome\s+do\s+beb/i)?.[1]), "Nome da mãe");
-  put("rnNome", clean(head.match(/Nome\s+do\s+beb[êe]\s*:?\s*(.*)$/i)?.[1]), "Nome do RN");
-
-  const rgLine = find(/RG\s+da\s+m[ãa]e/i) || flat;
+  // ── Cabeçalho (cada rótulo pode estar na mesma linha OU em linhas separadas) ──
+  const rnDeLine = find(/RN\s+de\s*:/i);
+  put("maeNome", clean(rnDeLine.match(/RN\s+de\s*:?\s*(.+?)(?:\s+Nome\s+do\s+beb.*)?$/i)?.[1]), "Nome da mãe");
+  const bebeLine = find(/Nome\s+do\s+beb/i);
+  put("rnNome", clean(bebeLine.match(/Nome\s+do\s+beb[êe]?\s*:?\s*(.*)$/i)?.[1]), "Nome do RN");
+  const rgLine = find(/RG\s+da\s+m[ãa]e/i);
   put("maeRg", rgLine.match(/RG\s+da\s+m[ãa]e\s*:?\s*(\d{4,})/i)?.[1], "RG mãe");
-  put("procedencia", clean(rgLine.match(/Resid[êe]ncia\s+atual\s*:?\s*(.+)$/i)?.[1]), "Procedência");
+  const procLine = find(/Resid[êe]ncia\s+atual/i);
+  put("procedencia", clean(procLine.match(/Resid[êe]ncia\s+atual\s*:?\s*(.+)$/i)?.[1]), "Procedência");
 
-  // ── História materna (sai vazia em PDF imagem) ──
-  const par = flat.match(/(?:^|\s)G\s*:?\s*(\d+)\s+P\s*:?\s*(\d*)\s+A\s*:?\s*(\d*)/i);
-  if (par) {
-    let s = `G${par[1]}`;
-    if (par[2]) s += `P${par[2]}`;
-    if (par[3]) s += `A${par[3]}`;
-    put("paridade", s, "Paridade");
+  // ── História materna (G/P/A independentes; dois-pontos obrigatório p/ evitar
+  //    falsos como "P74"/"PC"; "IG"/"GS" não casam pois exigem dígito após ":") ──
+  const g = flat.match(/\bG\s*:\s*(\d+)/i)?.[1];
+  if (g) {
+    const p = flat.match(/\bP\s*:\s*(\d+)/i)?.[1];
+    const a = flat.match(/\bA\s*:\s*(\d+)/i)?.[1];
+    put("paridade", `G${g}${p ? `P${p}` : ""}${a ? `A${a}` : ""}`, "Paridade");
   }
   put("maeABO", cleanABO(flat.match(/\bGS\s*:?\s*([ABO0]{1,2})\b/i)?.[1]), "Tipagem mãe (ABO)");
   put("maeRh", mapRh(flat.match(/\bRh\s*:?\s*(POS\w*|NEG\w*|positiv\w*|negativ\w*|\+|-)/i)?.[1]), "Rh mãe");
@@ -167,7 +174,7 @@ export function parseFicha(text: string): FichaParse {
 
   // ── Descrição da sala de parto ──
   const regiao = norm.match(
-    /Descri[çc][ãa]o\s+da\s+sala\s+de\s+parto\s*:?\s*([\s\S]+?)(?:Pele\s+a\s+pele|Se\s+Apgar|EXAME\s+SUM|Tax\s+m[ãa]e\s+15|$)/i,
+    /Descri[çc][ãa]o\s+da\s+sala\s+de\s+parto\s*:?\s*([\s\S]+?)(?:\bAPGAR\s+(?:FC|MR|COR|com)\b|Pele\s+a\s+pele|Se\s+Apgar|EXAME\s+SUM|Tax\s+m[ãa]e\s+15|$)/i,
   )?.[1];
   put("nascimentoDescricao", cleanDescricao(regiao), "Evolução do nascimento");
 
