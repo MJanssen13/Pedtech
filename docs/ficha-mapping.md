@@ -73,12 +73,20 @@ parsing direto por âncoras de rótulo.
   Exames complementares, Condutas, Evolução clínica do dia.
 
 ## Estratégia de extração (SEM IA — 100% no dispositivo)
-1. **PDF com texto selecionável** → `pdf.js` extrai o texto → **parser por âncoras
-   de rótulo (regex)**.
-2. **PDF imagem/scan** (caso dos exemplos) → `pdf.js` rasteriza a página em canvas →
-   **Tesseract.js** (idioma `por`) gera o texto → mesmo **parser regex**.
-3. Validar com `zod`, preencher o formulário, **usuário confere tudo**, então salvar
-   apenas os campos (nunca o arquivo).
+0. **Colar texto (recomendado)** → o usuário seleciona tudo no leitor de PDF (Ctrl+A),
+   copia e cola → **parser regex**. É o caminho mais fiel: pega inclusive as linhas
+   densas (Idade/G/GS/Rh e Apgar) que o Tesseract não lê. Útil porque os leitores
+   (Edge/Acrobat) fazem OCR ao vivo e deixam o texto selecionável **mesmo quando o
+   PDF é imagem** (a camada de texto NÃO fica salva no arquivo).
+1. **PDF com texto selecionável** → `pdf.js` extrai o texto → mesmo parser.
+2. **PDF imagem/scan** (caso dos exemplos) → `pdf.js` rasteriza em escala 4 +
+   binarização → **Tesseract.js** (`por`) → mesmo parser. Linhas densas
+   (Idade/G/GS/Rh, tabela do Apgar) podem não ser lidas → preenchimento manual.
+3. **Usuário confere tudo**, então salva apenas os campos (nunca o arquivo).
+
+> Nota: os PDFs de exemplo são imagem pura (pdf.js e pypdf leem 0 caractere e só 2
+> páginas). A seleção que o usuário vê vem do OCR ao vivo do leitor, não de texto
+> embutido — por isso a opção "Colar texto" é a mais confiável na prática.
 
 Como o layout da FOLHA DE SALA DE PARTO é fixo, o parser ancora nos rótulos
 (`RN de:`, `Nome do bebê:`, `PN (g):`, `Apgar`, `Rotura de bolsa às`, `DIAGNÓSTICOS`,
