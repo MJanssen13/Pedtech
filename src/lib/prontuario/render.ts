@@ -1,0 +1,312 @@
+/**
+ * Renderiza o texto de evolução no formato do MODELO DE EVOLUÇÃO AC,
+ * pronto para copiar e colar no prontuário.
+ *
+ * A plataforma não é obrigada a seguir a ordem do modelo na tela, mas o TEXTO
+ * final segue o modelo enviado.
+ */
+
+import type { Patient, Evolution, BlocoEvolucao, Sexo } from '@/lib/domain/types';
+import { calcularTendenciaPeso, type PesoRegistro } from '@/lib/clinical/weight';
+import { formatarIG } from '@/lib/clinical/gestational-age';
+import {
+  EXAME_GERAL_NORMAL,
+  EXAME_ACV_NORMAL,
+  EXAME_AR_NORMAL,
+  EXAME_ABDOME_NORMAL,
+  EXAME_COTO_NORMAL,
+  EXAME_MEMBROS_NORMAL,
+  genitaliaNormal,
+  REFLEXOS_NEURO,
+} from '@/lib/clinical/exam-defaults';
+
+const SEP =
+  '==============================================================================';
+const M = '۰'; // marcador do modelo
+
+const fmtData = (iso?: string | null) => {
+  if (!iso) return '';
+  const d = new Date(iso.length <= 10 ? iso + 'T00:00:00' : iso);
+  return d.toLocaleDateString('pt-BR');
+};
+const dm = (iso?: string | null) => {
+  if (!iso) return '';
+  const d = new Date(iso.length <= 10 ? iso + 'T00:00:00' : iso);
+  return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+};
+
+function apgarTexto(apgar: Patient['apgar']): string {
+  if (!apgar?.length) return '';
+  const a1 = apgar.find((a) => a.tempo === 1)?.valor;
+  const a5 = apgar.find((a) => a.tempo === 5)?.valor;
+  const base = [a1, a5].filter((v) => v != null).join('/');
+  const extras = apgar
+    .filter((a) => a.tempo !== 1 && a.tempo !== 5)
+    .map((a) => `${a.valor} (${a.tempo}min)`);
+  return [base, ...extras].filter(Boolean).join(' / ');
+}
+
+/** Compõe a frase de EVOLUÇÃO a partir dos botões. */
+export function composeEvolucao(sexo: Sexo | null, b: BlocoEvolucao): string {
+  const f = sexo === 'feminino';
+  const acomp = (b.acompanhantes ?? []).map((a) =>
+    a === 'mae' ? 'mãe' : a === 'pai' ? 'pai' : a === 'avo' ? 'avó' : 'acompanhante',
+  );
+  const acompTxt =
+    acomp.length > 0
+      ? `acompanhad${f ? 'a' : 'o'} ${acomp.length > 1 ? 'por ' : ''}${listar(acomp, true)}`
+      : '';
+  const partes: string[] = [];
+  partes.push(
+    `Avalio RN em leito de alojamento conjunto${acompTxt ? ', ' + acompTxt : ''}${
+      b.vinculo ? `, ${b.vinculo}` : ''
+    }.`,
+  );
+  const achados: string[] = [];
+  if (b.pega) achados.push(b.pega === 'boa' ? 'boa pega' : 'pega inadequada');
+  if (b.succao) achados.push(b.succao === 'boa' ? 'boa sucção' : 'sucção ineficiente');
+  if (b.producao)
+    achados.push(b.producao === 'adequada' ? 'produção láctea adequada' : 'baixa produção láctea');
+  if (achados.length) partes.push(`Apresenta ${listar(achados)}.`);
+  partes.push(
+    b.desconfortoRespiratorio ? 'Com desconforto respiratório.' : 'Sem desconforto respiratório.',
+  );
+  if (b.complementacao?.realizada) {
+    const c = b.complementacao;
+    const det = [
+      c.hora ? `às ${c.hora}` : '',
+      c.destro != null ? `destro ${c.destro}` : '',
+      c.quantidadeMl != null ? `${c.quantidadeMl} ml` : '',
+    ]
+      .filter(Boolean)
+      .join(', ');
+    partes.push(`Necessitou complementação${det ? ` (${det})` : ''}.`);
+  }
+  partes.push(b.outrasQueixas?.trim() ? b.outrasQueixas.trim() : 'Nega demais queixas.');
+  return partes.join(' ');
+}
+
+function listar(itens: string[], _e = false): string {
+  if (itens.length <= 1) return itens.join('');
+  return itens.slice(0, -1).join(', ') + ' e ' + itens.at(-1);
+}
+
+export interface RenderInput {
+  patient: Patient;
+  evolution: Evolution;
+  pesos: PesoRegistro[]; // série de peso (inclui nascimento e atual)
+  /** percentis opcionais (Intergrowth) já calculados: "(p67)" etc. */
+  percentis?: { peso?: string; pc?: string; comprimento?: string };
+  /** IG em texto livre (permite anotações). Tem prioridade sobre os dias. */
+  ig?: { dum?: string; usg?: string };
+}
+
+export function renderProntuario({ patient: p, evolution: e, pesos, percentis, ig }: RenderInput): string {
+  const L: string[] = [];
+  const push = (s = '') => L.push(s);
+
+  push(`♦ EVOLUÇÃO ALOJAMENTO CONJUNTO RN - ${fmtData(e.data)} ♦`);
+  push();
+  push('IDENTIFICAÇÃO');
+  push(`${M}Nome mãe: ${p.mae_nome ?? ''}`);
+  push(`${M}RG mãe: ${p.mae_rg ?? ''}`);
+  push(`${M}Leito: ${p.leito ?? ''}`);
+  push(`${M}Procedência: ${p.procedencia ?? ''}`);
+  push(`${M}Paridade (pós parto): ${p.paridade ?? ''}`);
+  push(`${M}Nome RN: ${p.rn_nome ?? ''}`);
+  push(`${M}RG RN: ${p.rn_rg ?? ''}`);
+  push(`${M}Sexo: ${p.sexo ?? ''}`);
+  push(`${M}DN: ${fmtData(p.nascimento_em ?? null)}`);
+  push(`${M}HN: ${horaDe(p.nascimento_em)}`);
+  push(`${M}Horas de vida (até as ${e.corte_horario ?? '08:00'} de hoje): ${e.horas_vida ?? ''}h`);
+  push(SEP);
+
+  push('SALA DE PARTO:');
+  const via =
+    p.nascimento_via === 'cesarea'
+      ? `Cesárea${p.indicacao_cesarea ? ` (${p.indicacao_cesarea})` : ''}`
+      : p.nascimento_via === 'vaginal'
+        ? 'Vaginal'
+        : '';
+  const pPeso = p.peso_nascimento_g
+    ? `${p.peso_nascimento_g}g${percentis?.peso ? ` ${percentis.peso}` : ''}`
+    : '';
+  const pPC = p.pc_nascimento_cm
+    ? `${p.pc_nascimento_cm} cm${percentis?.pc ? ` ${percentis.pc}` : ''}`
+    : '';
+  const pComp = p.comprimento_nascimento_cm
+    ? `${p.comprimento_nascimento_cm} cm${percentis?.comprimento ? ` ${percentis.comprimento}` : ''}`
+    : '';
+  push(
+    `${M}Nascimento: ${via} ${M}P: ${pPeso} ${M}PC: ${pPC} ${M}Comprimento: ${pComp} ${M}Apgar: ${apgarTexto(p.apgar)}`,
+  );
+  push(`${M}Evolução do Nascimento: ${p.nascimento_descricao ?? ''}`);
+  push(SEP);
+
+  // Acompanhamento de peso
+  const trend = calcularTendenciaPeso(pesos);
+  push(`${M}Peso atual: ${e.peso_atual_g ? `${e.peso_atual_g}g` : ''}`);
+  for (const linha of trend.slice(1)) {
+    if (linha.nascimento) {
+      const sinal = (linha.deltaDesdeNascimento ?? 0) > 0 ? '+' : '';
+      push(
+        `${M}Peso de nascimento (${dm(linha.data)}): ${linha.gramas}g — Variação desde o nascimento ${sinal}${linha.deltaDesdeNascimento}g (${linha.percentualDesdeNascimento}%)`,
+      );
+    } else {
+      push(
+        `${M}(${dm(linha.data)}): ${linha.gramas}g — Variação de ${sinalNum(linha.gPorDia)}g/dia (${sinalNum(linha.percentual)}%)`,
+      );
+    }
+  }
+  push(SEP);
+
+  const igDum = ig?.dum?.trim() || (p.ig_dum_dias != null ? formatarIG(p.ig_dum_dias) : 'incerta');
+  const igUsg = ig?.usg?.trim() || (p.ig_usg_dias != null ? formatarIG(p.ig_usg_dias) : '');
+  push(`${M}IG pela DUM: ${igDum}`);
+  push(`${M}IG pelo USG: ${igUsg}`);
+  push(SEP);
+
+  push('RISCO INFECCIOSO:');
+  const prof = p.risco?.profilaxia;
+  const profTxt = prof?.medicamento
+    ? `${prof.medicamento}${prof.data ? ` (${fmtData(prof.data)}${prof.hora ? ` ${prof.hora}` : ''})` : ''}`
+    : 'Não se aplica';
+  push(`${M}Tempo de BR: ${p.risco?.tempoBR ?? ''} ${M}Profilaxia (data e hora): ${profTxt}`);
+  push(SEP);
+
+  push(`Tipagem sanguínea Mãe: ${tip(p.tipagem?.maeABO, p.tipagem?.maeRh)} / CI: ${p.tipagem?.ci ?? 'aguardo'}`);
+  push(`Tipagem sanguínea RN: ${tip(p.tipagem?.rnABO, p.tipagem?.rnRh)} / CD: ${p.tipagem?.cd ?? 'aguardo'}`);
+  push(SEP);
+
+  push(`Sorologias Maternas: ${p.sorologias_maternas ?? ''}`);
+  push(SEP);
+  push(`DIAGNÓSTICOS: ${p.diagnosticos ?? ''}`);
+  push(SEP);
+
+  push(`EVOLUÇÃO: ${composeEvolucao(p.sexo, e.evolucao ?? {})}`);
+  const alim = e.evolucao?.alimentacao;
+  const alimTxt = alim?.tipo
+    ? `${alim.tipo}${alim.quantidadeMl ? ` ${alim.quantidadeMl}ml` : ''}${alim.intervalo ? ` ${alim.intervalo}` : ''}${alim.detalhe ? ` (${alim.detalhe})` : ''}`
+    : '';
+  push(
+    `Diurese: ${presAus(e.evolucao?.diurese)} / Mecônio: ${presAus(e.evolucao?.meconio)} / Alimentação: ${alimTxt}`,
+  );
+  push(SEP);
+  push(`INTERCORRÊNCIAS: ${e.intercorrencias?.trim() || 'Nega'}`);
+  push(SEP);
+
+  push('GLUCOTESTES:');
+  if (e.glucotestes?.length) {
+    for (const g of e.glucotestes) push(`${g.hora}: ${g.valor ?? ''}`);
+  } else {
+    push('-');
+  }
+  push(SEP);
+
+  push('TESTES DE TRIAGEM:');
+  push(`${M}Teste do Olhinho: ${triagemTxt(e.triagem?.olhinho)}`);
+  const cor = e.triagem?.coracaozinho;
+  const corSat =
+    cor && (cor.satMSD != null || cor.satMembroInferior != null)
+      ? ` MSD ${cor.satMSD ?? '-'}/ MIE ${cor.satMembroInferior ?? '-'}`
+      : '';
+  push(
+    `${M}Teste do Coraçãozinho: ${cor ? statusTxt(cor.status) + corSat + dataTxt(cor.data) : 'Aguardo'}`,
+  );
+  const ling = e.triagem?.linguinha;
+  push(
+    `${M}Teste da Linguinha: ${ling?.bristol != null ? `Bristol ${ling.bristol}` : triagemTxt(ling)}`,
+  );
+  push(`${M}Teste da Orelhinha: ${triagemTxt(e.triagem?.orelhinha)}`);
+  push(`${M}Teste do Pezinho: ${triagemTxt(e.triagem?.pezinho)}`);
+  push(SEP);
+
+  push('VACINAÇÃO');
+  push(`${M}Hepatite B: ${vacinaTxt(e.vacinacao?.hepB)}`);
+  push(`${M}BCG: ${vacinaTxt(e.vacinacao?.bcg)}`);
+  push(SEP);
+
+  const foto = e.fototerapia;
+  const fotoTxt =
+    foto?.status === 'realizada'
+      ? `Realizada${foto.inicio ? ` (início ${foto.inicio}${foto.fim ? `, fim ${foto.fim}` : ''})` : ''}`
+      : 'Não realizada';
+  push(`FOTOTERAPIA: ${fotoTxt}`);
+  push(SEP);
+
+  // Exame físico
+  const ef = e.exame_fisico ?? {};
+  push('EXAME FÍSICO:');
+  push(
+    `Peso: ${ef.peso_g ?? e.peso_atual_g ?? ''}g / FC: ${ef.fc ?? ''} bpm / FR: ${ef.fr ?? ''} irpm`,
+  );
+  push(sistema(ef.geral, EXAME_GERAL_NORMAL));
+  const cab = ef.cabeca;
+  push(
+    `Cabeça: ${cab?.estado === 'alterado' && cab.texto ? cab.texto : `FANT ${cab?.fant ?? ''} / FPOST ${cab?.fpost ?? ''}`}`,
+  );
+  push(`ACV: ${sistemaInline(ef.acv, EXAME_ACV_NORMAL)}`);
+  push(`AR: ${sistemaInline(ef.ar, EXAME_AR_NORMAL)}`);
+  push(`Abdome: ${sistemaInline(ef.abdome, EXAME_ABDOME_NORMAL)}`);
+  push(`Coto umbilical: ${sistemaInline(ef.coto, EXAME_COTO_NORMAL)}`);
+  push(`Genitália: ${sistemaInline(ef.genitalia, genitaliaNormal(p.sexo))}`);
+  push(`Membros: ${sistemaInline(ef.membros, EXAME_MEMBROS_NORMAL)}`);
+  const reflexos = REFLEXOS_NEURO.map(
+    (r) => `(${ef.neurologico?.reflexos?.[r] ? 'x' : ' '}) ${r}`,
+  ).join(' ');
+  push(`Neurológico: ${reflexos}${ef.neurologico?.texto ? ` — ${ef.neurologico.texto}` : ''}`);
+  if (ef.ictericia?.presente)
+    push(`Icterícia: Kramer ${ef.ictericia.kramer ?? '?'}`);
+  if (ef.bilicheck)
+    push(
+      `Bilicheck: ${ef.bilicheck.valor} mg/dL${ef.bilicheck.data ? ` (${fmtData(ef.bilicheck.data)}${ef.bilicheck.hora ? ` ${ef.bilicheck.hora}` : ''})` : ''}`,
+    );
+  push(SEP);
+
+  push(`EXAMES COMPLEMENTARES: ${e.exames_complementares?.trim() || '-'}`);
+  push(SEP);
+  push('CONDUTAS: Discutido com equipe do Alojamento Conjunto, que orienta:');
+  push(e.condutas?.trim() || '');
+
+  return L.join('\n');
+}
+
+// ───────────────────────── helpers ─────────────────────────
+function horaDe(iso?: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+function tip(abo?: string, rh?: string): string {
+  if (!abo && !rh) return 'aguardo';
+  return `${abo ?? ''}${rh ? (abo ? rh : rh) : ''}`.trim() || 'aguardo';
+}
+function presAus(v?: string): string {
+  return v === 'presente' ? '+' : v === 'ausente' ? '-' : '';
+}
+function sinalNum(n: number | null): string {
+  if (n == null) return '';
+  return n > 0 ? `+${n}` : `${n}`;
+}
+function statusTxt(s?: string): string {
+  return s === 'normal' ? 'Normal' : s === 'alterado' ? 'Alterado' : 'Aguardo';
+}
+function dataTxt(d?: string): string {
+  return d ? ` (realizado em ${fmtData(d)})` : '';
+}
+function triagemTxt(t?: { status: string; data?: string }): string {
+  if (!t) return 'Aguardo';
+  return `${statusTxt(t.status)}${t.status !== 'aguardo' ? dataTxt(t.data) : ''}`;
+}
+function vacinaTxt(v?: { status: string; data?: string }): string {
+  if (!v) return 'Aguardo';
+  return v.status === 'realizada'
+    ? `Realizada${v.data ? ` (${fmtData(v.data)})` : ''}`
+    : 'Aguardo';
+}
+function sistema(s: { estado: string; texto?: string } | undefined, normal: string): string {
+  return s?.estado === 'alterado' && s.texto ? s.texto : normal;
+}
+function sistemaInline(s: { estado: string; texto?: string } | undefined, normal: string): string {
+  return s?.estado === 'alterado' && s.texto ? s.texto : normal;
+}

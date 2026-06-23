@@ -1,0 +1,42 @@
+@import "tailwindcss";
+
+:root {
+  --background: #f4f6f8;
+  --foreground: #14181f;
+  --card: #ffffff;
+  --border: #e2e6eb;
+  --primary: #0e6e6e;
+  --muted: #6b7480;
+  --accent: #eef6f6;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+html {
+  color-scheme: light;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), system-ui, sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* Alvos de toque confortáveis no celular; evita zoom no iOS */
+input,
+select,
+textarea,
+button {
+  font-size: 16px;
+}
