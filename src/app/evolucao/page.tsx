@@ -17,6 +17,7 @@ import {
   type EvolucaoForm,
 } from "@/lib/prontuario/form";
 import { renderProntuario } from "@/lib/prontuario/render";
+import { ImportFicha } from "@/components/ImportFicha";
 import { REFLEXOS_NEURO } from "@/lib/clinical/exam-defaults";
 import type {
   Sexo,
@@ -62,6 +63,20 @@ export default function EvolucaoPage() {
       {/* ─────────────── FORMULÁRIO ─────────────── */}
       <div>
         <h1 className="mb-3 text-lg font-semibold">Nova evolução</h1>
+
+        <ImportFicha
+          onApply={(fields) =>
+            setForm((prev) => {
+              const merged = { ...prev };
+              for (const [k, v] of Object.entries(fields)) {
+                if (v !== undefined && v !== "") {
+                  (merged as Record<string, unknown>)[k] = v;
+                }
+              }
+              return merged;
+            })
+          }
+        />
 
         <Section title="Identificação">
           <Grid>

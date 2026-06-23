@@ -42,6 +42,9 @@ yarn-error.log*
 /skills-lock.json
 /.claude/
 
+# worker do pdf.js (copiado em predev/prebuild a partir de node_modules)
+/public/pdf.worker.min.mjs
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
