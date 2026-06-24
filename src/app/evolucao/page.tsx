@@ -678,7 +678,12 @@ function SistemaRow({
         <SegGroup
           options={[{ value: "n", label: "Normal" }, { value: "a", label: "Alterado" }]}
           value={alt ? "a" : "n"}
-          onChange={(v) => onAlt(v === "a")}
+          onChange={(v) => {
+            const altered = v === "a";
+            onAlt(altered);
+            // ao abrir para edição, parte do texto normal (se ainda vazio)
+            if (altered && !texto.trim()) onTexto(normal);
+          }}
           allowClear={false}
         />
       </div>
