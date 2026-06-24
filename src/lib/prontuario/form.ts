@@ -20,7 +20,7 @@ import type { RenderInput } from "@/lib/prontuario/render";
 import type { PesoRegistro } from "@/lib/clinical/weight";
 import { calcularHorasDeVida } from "@/lib/clinical/hours-of-life";
 import { CONDUTAS_PADRAO, REFLEXOS_NEURO } from "@/lib/clinical/exam-defaults";
-import { percentilNascimento, formatPercentil, parseIgToDays } from "@/lib/clinical/intergrowth";
+import { percentilNascimento, formatPercentil } from "@/lib/clinical/intergrowth";
 
 export interface PesoLinhaForm {
   data: string;
@@ -78,11 +78,18 @@ export interface EvolucaoForm {
   pesoAtualG: string;
   pesos: PesoLinhaForm[];
 
-  // IG (texto livre)
-  igDum: string;
+  // IG estruturada (semanas + dias por modalidade)
+  igDumSem: string;
+  igDumDias: string;
   igDumIncerta: boolean;
-  igUsg: string;
-  percentilFonte: "usg" | "dum"; // qual IG usar no percentil Intergrowth
+  igUsgSem: string; // IG ao nascer pelo USG
+  igUsgDias: string;
+  igUsgExameData: string; // data de realização do USG
+  igUsgExameSem: string; // IG no momento do exame
+  igUsgExameDias: string;
+  igCapurroSem: string;
+  igCapurroDias: string;
+  percentilFonte: "usg" | "dum" | "capurro"; // qual IG usar no percentil Intergrowth
 
   // Risco
   tempoBR: string;
@@ -192,7 +199,9 @@ export function emptyForm(): EvolucaoForm {
     via: undefined, indicacaoCesarea: "", pesoNascimentoG: "", pcCm: "",
     comprimentoCm: "", apgar1: "", apgar5: "", nascimentoDescricao: "",
     pesoAtualG: "", pesos: [],
-    igDum: "", igDumIncerta: false, igUsg: "", percentilFonte: "usg",
+    igDumSem: "", igDumDias: "", igDumIncerta: false,
+    igUsgSem: "", igUsgDias: "", igUsgExameData: "", igUsgExameSem: "", igUsgExameDias: "",
+    igCapurroSem: "", igCapurroDias: "", percentilFonte: "usg",
     tempoBR: "", profilaxiaModo: undefined, profMedicamento: "", profData: "", profHora: "",
     maeABO: "", maeRh: "", ci: "", rnABO: "", rnRh: "", cd: "",
     sorologias: "", diagnosticos: "",
@@ -231,6 +240,21 @@ export const usaQuantidade = (t?: TipoAlimentacao) => t === "FMI" || t === "AMM"
 /** Modos que envolvem fórmula infantil (mostram "em relactação"). */
 export const envolveFormula = (t?: TipoAlimentacao) => t === "FMI" || t === "AMM" || t === "AMC";
 
+/** IG em dias a partir de semanas + dias (strings). */
+export function igDias(sem: string, dias: string): number | null {
+  const s = num(sem);
+  if (s == null) return null;
+  return s * 7 + (num(dias) ?? 0);
+}
+/** "39 semanas e 4 dias" (vazio se semanas ausente). */
+function igStr(sem: string, dias: string): string {
+  const s = num(sem);
+  return s == null ? "" : `${s} semanas e ${num(dias) ?? 0} dias`;
+}
+function fmtBR(iso: string): string {
+  return iso ? new Date(iso + "T00:00:00").toLocaleDateString("pt-BR") : "";
+}
+
 function sistema(alt: boolean, texto: string) {
   return { estado: alt ? ("alterado" as const) : ("normal" as const), texto };
 }
@@ -240,13 +264,20 @@ export interface PercentisCalc {
   pc?: string;
   comprimento?: string;
   gaDias: number | null;
-  fonte: "usg" | "dum";
+  fonte: "usg" | "dum" | "capurro";
 }
 
-/** Percentis INTERGROWTH-21st a partir do sexo e da IG (DUM ou USG) escolhida. */
+/** Percentis INTERGROWTH-21st a partir do sexo e da IG (DUM, USG ou Capurro) escolhida. */
 export function computePercentis(f: EvolucaoForm): PercentisCalc {
   const fonte = f.percentilFonte;
-  const gaDias = parseIgToDays(fonte === "dum" ? (f.igDumIncerta ? "" : f.igDum) : f.igUsg);
+  const gaDias =
+    fonte === "dum"
+      ? f.igDumIncerta
+        ? null
+        : igDias(f.igDumSem, f.igDumDias)
+      : fonte === "capurro"
+        ? igDias(f.igCapurroSem, f.igCapurroDias)
+        : igDias(f.igUsgSem, f.igUsgDias);
   const sexo = f.sexo === "feminino" ? "F" : f.sexo === "masculino" ? "M" : null;
   if (!sexo || gaDias == null) return { gaDias, fonte };
   const fmt = (anthro: "weight" | "length" | "hc", v: number | null) =>
@@ -442,11 +473,20 @@ export function buildRenderInput(f: EvolucaoForm): RenderInput {
 
   const perc = computePercentis(f);
 
+  const igDumStr = f.igDumIncerta ? "incerta" : igStr(f.igDumSem, f.igDumDias);
+  const igUsgBase = igStr(f.igUsgSem, f.igUsgDias);
+  const igUsgExame =
+    igStr(f.igUsgExameSem, f.igUsgExameDias) || f.igUsgExameData
+      ? ` (US com ${igStr(f.igUsgExameSem, f.igUsgExameDias)}${f.igUsgExameData ? ` realizado em ${fmtBR(f.igUsgExameData)}` : ""})`
+      : "";
+  const igUsgStr = igUsgBase ? igUsgBase + igUsgExame : "";
+  const igCapurroStr = igStr(f.igCapurroSem, f.igCapurroDias);
+
   return {
     patient,
     evolution,
     pesos,
-    ig: { dum: f.igDumIncerta ? "incerta" : f.igDum, usg: f.igUsg },
+    ig: { dum: igDumStr, usg: igUsgStr, capurro: igCapurroStr },
     percentis: { peso: perc.peso, pc: perc.pc, comprimento: perc.comprimento },
   };
 }

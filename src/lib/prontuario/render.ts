@@ -131,7 +131,7 @@ export interface RenderInput {
   /** percentis opcionais (Intergrowth) já calculados: "(p67)" etc. */
   percentis?: { peso?: string; pc?: string; comprimento?: string };
   /** IG em texto livre (permite anotações). Tem prioridade sobre os dias. */
-  ig?: { dum?: string; usg?: string };
+  ig?: { dum?: string; usg?: string; capurro?: string };
 }
 
 export function renderProntuario({ patient: p, evolution: e, pesos, percentis, ig }: RenderInput): string {
@@ -197,6 +197,7 @@ export function renderProntuario({ patient: p, evolution: e, pesos, percentis, i
   const igUsg = ig?.usg?.trim() || (p.ig_usg_dias != null ? formatarIG(p.ig_usg_dias) : '');
   push(`${M}IG pela DUM: ${igDum}`);
   push(`${M}IG pelo USG: ${igUsg}`);
+  if (ig?.capurro?.trim()) push(`${M}IG pelo Capurro: ${ig.capurro.trim()}`);
   push(SEP);
 
   push('RISCO INFECCIOSO:');

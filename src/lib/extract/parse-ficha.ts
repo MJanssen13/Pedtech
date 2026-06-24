@@ -130,15 +130,26 @@ export function parseFicha(text: string): FichaParse {
   put("maeRh", mapRh(flat.match(/\bRh\s*:?\s*(POS\w*|NEG\w*|positiv\w*|negativ\w*|\+|-)/i)?.[1]), "Rh mãe");
   put("ci", normCoombs(flat.match(/Coombs\s+indireto\s*:?\s*([A-Za-zÀ-ú]+)/i)?.[1]), "Coombs indireto");
 
-  // ── Idade gestacional (tolera "1G"/"lG") ──
-  put("igUsg", clean(flat.match(/\b[I1l]G\s*:?\s*(\d{1,2}\s*semanas?[^()\n]*\([^)]*\bUS\b[^)]*\))/i)?.[1]), "IG pelo USG");
-  // DUM: só conta se houver uma data ou nº de semanas associado (campo costuma vir vazio).
-  const dumData = flat.match(/\(\s*DUM\s*:?\s*(\d{1,2}\/\d{1,2}\/\d{2,4})/i)?.[1];
-  const dumSem = flat.match(/\b[I1l]G\s*:?\s*(\d{1,2})\s*semanas?[^()\n]{0,20}\(\s*DUM/i)?.[1];
-  if (dumData || dumSem) {
-    let s = dumSem ? `${dumSem} semanas` : "";
-    if (dumData) s += `${s ? " " : ""}(DUM ${dumData})`;
-    put("igDum", clean(s), "IG pela DUM");
+  // ── Idade gestacional (sem+dias por modalidade; tolera "1G"/"lG") ──
+  // USG: "39 semanas e 4 dias (US com 16 semanas e 4 dias realizado em 23/10/2023)"
+  const usg = flat.match(/\b[I1l]G\s*:?\s*(\d{1,2})\s*semanas?(?:\s*e\s*(\d{1,2})\s*dias?)?[^()\n]*\(([^)]*\bUS\b[^)]*)\)/i);
+  if (usg) {
+    put("igUsgSem", usg[1], "IG USG (sem)");
+    if (usg[2]) put("igUsgDias", usg[2], "IG USG (dias)");
+    const dentro = usg[3];
+    const ex = dentro.match(/(\d{1,2})\s*semanas?(?:\s*e\s*(\d{1,2})\s*dias?)?/i);
+    if (ex) {
+      put("igUsgExameSem", ex[1], "IG no USG (sem)");
+      if (ex[2]) put("igUsgExameDias", ex[2], "IG no USG (dias)");
+    }
+    const exData = dentro.match(/(\d{1,2}\/\d{1,2}\/\d{2,4})/);
+    if (exData) put("igUsgExameData", isoDate(exData[1]), "Data do USG");
+  }
+  // DUM: "40 semanas e 2 dias (DUM ...)"
+  const dum = flat.match(/\b[I1l]G\s*:?\s*(\d{1,2})\s*semanas?(?:\s*e\s*(\d{1,2})\s*dias?)?[^()\n]{0,20}\(\s*DUM/i);
+  if (dum) {
+    put("igDumSem", dum[1], "IG DUM (sem)");
+    if (dum[2]) put("igDumDias", dum[2], "IG DUM (dias)");
   }
 
   // ── Dados do nascimento ──

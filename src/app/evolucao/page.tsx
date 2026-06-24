@@ -30,6 +30,7 @@ import { KramerSelector } from "@/components/KramerSelector";
 import { renderProntuario } from "@/lib/prontuario/render";
 import { ImportFicha } from "@/components/ImportFicha";
 import { BilirubinaPanel } from "@/components/BilirubinaPanel";
+import { CapurroCalculator } from "@/components/CapurroCalculator";
 import type {
   Sexo,
   ViaNascimento,
@@ -73,6 +74,7 @@ const vacinaOpts: { value: StatusVacina; label: string }[] = [
 
 export default function EvolucaoPage() {
   const [f, setForm] = useState<EvolucaoForm>(emptyForm);
+  const [capurroOpen, setCapurroOpen] = useState(false);
   const set = <K extends keyof EvolucaoForm>(k: K, v: EvolucaoForm[K]) =>
     setForm((prev) => ({ ...prev, [k]: v }));
 
@@ -239,38 +241,74 @@ export default function EvolucaoPage() {
 
         <Section title="Idade gestacional">
           <Field label="IG pela DUM">
-            <div className="flex items-center gap-2">
-              <TextInput
-                value={f.igDumIncerta ? "incerta" : f.igDum}
-                disabled={f.igDumIncerta}
-                onChange={(e) => set("igDum", e.target.value)}
-                placeholder="ex.: 39 semanas e 2 dias"
-                className={f.igDumIncerta ? "opacity-50" : ""}
-              />
+            <div className="flex flex-wrap items-end gap-2">
+              <SemDias sem={f.igDumSem} dias={f.igDumDias} disabled={f.igDumIncerta} onSem={(v) => set("igDumSem", v)} onDias={(v) => set("igDumDias", v)} />
               <Checkbox label="Incerta" checked={f.igDumIncerta} onChange={(v) => set("igDumIncerta", v)} />
             </div>
           </Field>
-          <Field label="IG pelo USG">
-            <TextInput value={f.igUsg} onChange={(e) => set("igUsg", e.target.value)} placeholder="ex.: 38 semanas e 4 dias (US ...)" />
+
+          <Field label="IG pelo USG (ao nascer)">
+            <SemDias sem={f.igUsgSem} dias={f.igUsgDias} onSem={(v) => set("igUsgSem", v)} onDias={(v) => set("igUsgDias", v)} />
           </Field>
+          <Grid cols={3}>
+            <Field label="Data do USG"><TextInput type="date" value={f.igUsgExameData} onChange={(e) => set("igUsgExameData", e.target.value)} /></Field>
+            <Field label="IG no exame (sem)"><TextInput inputMode="numeric" value={f.igUsgExameSem} onChange={(e) => set("igUsgExameSem", e.target.value)} /></Field>
+            <Field label="IG no exame (dias)"><TextInput inputMode="numeric" value={f.igUsgExameDias} onChange={(e) => set("igUsgExameDias", e.target.value)} /></Field>
+          </Grid>
+          <button
+            type="button"
+            className="text-xs text-primary underline"
+            onClick={() =>
+              setForm((prev) => {
+                const exSem = Number(prev.igUsgExameSem);
+                if (!prev.igUsgExameData || !prev.dn || Number.isNaN(exSem)) return prev;
+                const examDays = exSem * 7 + (Number(prev.igUsgExameDias) || 0);
+                const elapsed = Math.round(
+                  (new Date(prev.dn + "T00:00:00").getTime() - new Date(prev.igUsgExameData + "T00:00:00").getTime()) / 86_400_000,
+                );
+                const birth = examDays + elapsed;
+                return { ...prev, igUsgSem: String(Math.floor(birth / 7)), igUsgDias: String(birth % 7) };
+              })
+            }
+          >
+            ↧ Calcular IG ao nascer a partir do exame
+          </button>
+
+          <Field label="Capurro somático" hint={f.igCapurroSem ? `Resultado: ${f.igCapurroSem} sem ${f.igCapurroDias || 0} d` : undefined}>
+            <button type="button" onClick={() => setCapurroOpen(true)} className="rounded-md border border-primary px-3 py-1.5 text-sm text-primary">
+              {f.igCapurroSem ? "Refazer Capurro" : "Calcular Capurro"}
+            </button>
+          </Field>
+
           <Field
             label="Calcular percentil (Intergrowth) por"
             hint={
               perc.gaDias != null
-                ? `IG usada: ${Math.floor(perc.gaDias / 7)} sem ${perc.gaDias % 7} d`
-                : "IG não reconhecida (use '39 semanas e 4 dias'). Válido de 33 a 42+6 sem."
+                ? `IG usada: ${Math.floor(perc.gaDias / 7)} sem ${perc.gaDias % 7} d (válido 33–42+6 sem)`
+                : "Preencha a IG da fonte escolhida (semanas/dias)."
             }
           >
             <SegGroup
               options={[
                 { value: "usg", label: "USG" },
                 { value: "dum", label: "DUM" },
+                { value: "capurro", label: "Capurro" },
               ]}
               value={f.percentilFonte}
               onChange={(v) => set("percentilFonte", (v ?? "usg") as EvolucaoForm["percentilFonte"])}
               allowClear={false}
             />
           </Field>
+
+          {capurroOpen && (
+            <CapurroCalculator
+              onClose={() => setCapurroOpen(false)}
+              onResult={(sem, dias) => {
+                setForm((prev) => ({ ...prev, igCapurroSem: String(sem), igCapurroDias: String(dias), percentilFonte: "capurro" }));
+                setCapurroOpen(false);
+              }}
+            />
+          )}
         </Section>
 
         <Section title="Risco infeccioso">
@@ -764,6 +802,31 @@ export default function EvolucaoPage() {
           </pre>
         </div>
       </div>
+    </div>
+  );
+}
+
+function SemDias({
+  sem,
+  dias,
+  disabled,
+  onSem,
+  onDias,
+}: {
+  sem: string;
+  dias: string;
+  disabled?: boolean;
+  onSem: (v: string) => void;
+  onDias: (v: string) => void;
+}) {
+  return (
+    <div className="flex items-end gap-2">
+      <Field label="Semanas">
+        <TextInput inputMode="numeric" value={sem} disabled={disabled} onChange={(e) => onSem(e.target.value)} className={`w-20 ${disabled ? "opacity-50" : ""}`} />
+      </Field>
+      <Field label="Dias">
+        <TextInput inputMode="numeric" value={dias} disabled={disabled} onChange={(e) => onDias(e.target.value)} className={`w-16 ${disabled ? "opacity-50" : ""}`} />
+      </Field>
     </div>
   );
 }
