@@ -14,6 +14,7 @@ import type { RenderInput } from "@/lib/prontuario/render";
 import type { PesoRegistro } from "@/lib/clinical/weight";
 import { calcularHorasDeVida } from "@/lib/clinical/hours-of-life";
 import { CONDUTAS_PADRAO, REFLEXOS_NEURO } from "@/lib/clinical/exam-defaults";
+import { percentilNascimento, formatPercentil, parseIgToDays } from "@/lib/clinical/intergrowth";
 
 export interface PesoLinhaForm {
   data: string;
@@ -57,6 +58,7 @@ export interface EvolucaoForm {
   // IG (texto livre)
   igDum: string;
   igUsg: string;
+  percentilFonte: "usg" | "dum"; // qual IG usar no percentil Intergrowth
 
   // Risco
   tempoBR: string;
@@ -157,7 +159,7 @@ export function emptyForm(): EvolucaoForm {
     via: undefined, indicacaoCesarea: "", pesoNascimentoG: "", pcCm: "",
     comprimentoCm: "", apgar1: "", apgar5: "", nascimentoDescricao: "",
     pesoAtualG: "", pesos: [],
-    igDum: "", igUsg: "",
+    igDum: "", igUsg: "", percentilFonte: "usg",
     tempoBR: "", profMedicamento: "", profData: "", profHora: "",
     maeABO: "", maeRh: "", ci: "", rnABO: "", rnRh: "", cd: "",
     sorologias: "", diagnosticos: "",
@@ -191,6 +193,31 @@ const num = (s: string): number | null => {
 
 function sistema(alt: boolean, texto: string) {
   return { estado: alt ? ("alterado" as const) : ("normal" as const), texto };
+}
+
+export interface PercentisCalc {
+  peso?: string;
+  pc?: string;
+  comprimento?: string;
+  gaDias: number | null;
+  fonte: "usg" | "dum";
+}
+
+/** Percentis INTERGROWTH-21st a partir do sexo e da IG (DUM ou USG) escolhida. */
+export function computePercentis(f: EvolucaoForm): PercentisCalc {
+  const fonte = f.percentilFonte;
+  const gaDias = parseIgToDays(fonte === "dum" ? f.igDum : f.igUsg);
+  const sexo = f.sexo === "feminino" ? "F" : f.sexo === "masculino" ? "M" : null;
+  if (!sexo || gaDias == null) return { gaDias, fonte };
+  const fmt = (anthro: "weight" | "length" | "hc", v: number | null) =>
+    v != null ? formatPercentil(percentilNascimento(anthro, sexo, gaDias, v)) || undefined : undefined;
+  return {
+    peso: fmt("weight", num(f.pesoNascimentoG)),
+    pc: fmt("hc", num(f.pcCm)),
+    comprimento: fmt("length", num(f.comprimentoCm)),
+    gaDias,
+    fonte,
+  };
 }
 
 export function buildRenderInput(f: EvolucaoForm): RenderInput {
@@ -336,5 +363,13 @@ export function buildRenderInput(f: EvolucaoForm): RenderInput {
   const atual = num(f.pesoAtualG);
   if (atual != null) pesos.push({ data: f.dataEvolucao, gramas: atual });
 
-  return { patient, evolution, pesos, ig: { dum: f.igDum, usg: f.igUsg } };
+  const perc = computePercentis(f);
+
+  return {
+    patient,
+    evolution,
+    pesos,
+    ig: { dum: f.igDum, usg: f.igUsg },
+    percentis: { peso: perc.peso, pc: perc.pc, comprimento: perc.comprimento },
+  };
 }

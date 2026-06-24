@@ -14,6 +14,7 @@ import {
 import {
   emptyForm,
   buildRenderInput,
+  computePercentis,
   type EvolucaoForm,
 } from "@/lib/prontuario/form";
 import { renderProntuario } from "@/lib/prontuario/render";
@@ -50,6 +51,14 @@ export default function EvolucaoPage() {
       return `Erro ao gerar: ${(e as Error).message}`;
     }
   }, [f]);
+
+  const perc = useMemo(() => computePercentis(f), [f]);
+  const percHint = (s?: string) =>
+    s
+      ? `Percentil ${s.replace(/[()]/g, "")}`
+      : !f.sexo || perc.gaDias == null
+        ? "defina sexo e IG (33–42+6 sem) p/ percentil"
+        : undefined;
 
   const [copiado, setCopiado] = useState(false);
   const copiar = async () => {
@@ -143,13 +152,13 @@ export default function EvolucaoPage() {
             </Field>
           )}
           <Grid cols={3}>
-            <Field label="Peso (g)">
+            <Field label="Peso (g)" hint={percHint(perc.peso)}>
               <TextInput inputMode="numeric" value={f.pesoNascimentoG} onChange={(e) => set("pesoNascimentoG", e.target.value)} />
             </Field>
-            <Field label="PC (cm)">
+            <Field label="PC (cm)" hint={percHint(perc.pc)}>
               <TextInput inputMode="decimal" value={f.pcCm} onChange={(e) => set("pcCm", e.target.value)} />
             </Field>
-            <Field label="Comprimento (cm)">
+            <Field label="Comprimento (cm)" hint={percHint(perc.comprimento)}>
               <TextInput inputMode="decimal" value={f.comprimentoCm} onChange={(e) => set("comprimentoCm", e.target.value)} />
             </Field>
             <Field label="Apgar 1º min">
@@ -238,6 +247,24 @@ export default function EvolucaoPage() {
           </Field>
           <Field label="IG pelo USG">
             <TextInput value={f.igUsg} onChange={(e) => set("igUsg", e.target.value)} placeholder="ex.: 38 semanas e 4 dias (US ...)" />
+          </Field>
+          <Field
+            label="Calcular percentil (Intergrowth) por"
+            hint={
+              perc.gaDias != null
+                ? `IG usada: ${Math.floor(perc.gaDias / 7)} sem ${perc.gaDias % 7} d`
+                : "IG não reconhecida (use '39 semanas e 4 dias'). Válido de 33 a 42+6 sem."
+            }
+          >
+            <SegGroup
+              options={[
+                { value: "usg", label: "USG" },
+                { value: "dum", label: "DUM" },
+              ]}
+              value={f.percentilFonte}
+              onChange={(v) => set("percentilFonte", (v ?? "usg") as EvolucaoForm["percentilFonte"])}
+              allowClear={false}
+            />
           </Field>
         </Section>
 
