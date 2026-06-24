@@ -428,7 +428,7 @@ export function buildRenderInput(f: EvolucaoForm): RenderInput {
         satMembroInferior: num(f.satMI) ?? undefined,
       },
       linguinha: {
-        status: f.linguinhaRealizado ? "normal" : "aguardo",
+        status: "aguardo",
         data: f.linguinhaData,
         tabby:
           f.linguinhaRealizado && f.linguinhaTabby.every((x) => x != null)
