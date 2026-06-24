@@ -26,6 +26,7 @@ import { TabbySelector } from "@/components/TabbySelector";
 import { KramerSelector } from "@/components/KramerSelector";
 import { renderProntuario } from "@/lib/prontuario/render";
 import { ImportFicha } from "@/components/ImportFicha";
+import { BilirubinaPanel } from "@/components/BilirubinaPanel";
 import type {
   Sexo,
   ViaNascimento,
@@ -659,6 +660,10 @@ export default function EvolucaoPage() {
               </Grid>
             )}
           </div>
+        </Section>
+
+        <Section title="Bilirrubina (BiliTool / AAP 2022)">
+          <BilirubinaPanel semanasIniciais={perc.gaDias ? Math.floor(perc.gaDias / 7) : undefined} />
         </Section>
 
         <Section
