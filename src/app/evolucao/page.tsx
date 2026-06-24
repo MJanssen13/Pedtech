@@ -22,6 +22,8 @@ import {
 import { calcularHorasDeVida } from "@/lib/clinical/hours-of-life";
 import { calcularTendenciaPeso } from "@/lib/clinical/weight";
 import { WeightChart } from "@/components/WeightChart";
+import { TabbySelector } from "@/components/TabbySelector";
+import { KramerSelector } from "@/components/KramerSelector";
 import { renderProntuario } from "@/lib/prontuario/render";
 import { ImportFicha } from "@/components/ImportFicha";
 import type {
@@ -567,7 +569,25 @@ export default function EvolucaoPage() {
               <Field label="Data"><TextInput type="date" value={f.coracaozinhoData} onChange={(e) => set("coracaozinhoData", e.target.value)} /></Field>
             </Grid>
           )}
-          <Field label="Linguinha (Bristol)"><TextInput inputMode="numeric" value={f.linguinhaBristol} onChange={(e) => set("linguinhaBristol", e.target.value)} /></Field>
+          <Field label="Linguinha (TABBY)">
+            {!f.linguinhaRealizado ? (
+              <button
+                type="button"
+                onClick={() => setForm((p) => ({ ...p, linguinhaRealizado: true, linguinhaData: p.linguinhaData || hojeStr() }))}
+                className="rounded-md border border-primary px-3 py-1.5 text-sm text-primary"
+              >
+                Realizar teste
+              </button>
+            ) : (
+              <div className="space-y-2">
+                <TabbySelector value={f.linguinhaTabby} onChange={(v) => set("linguinhaTabby", v)} />
+                <div className="flex items-end gap-3">
+                  <Field label="Data"><TextInput type="date" value={f.linguinhaData} onChange={(e) => set("linguinhaData", e.target.value)} className="max-w-[170px]" /></Field>
+                  <button type="button" className="pb-2 text-xs text-red-500 underline" onClick={() => set("linguinhaRealizado", false)}>cancelar</button>
+                </div>
+              </div>
+            )}
+          </Field>
           <TriRow label="Orelhinha" status={f.orelhinha} data={f.orelhinhaData} onStatus={triagem("orelhinha", "orelhinhaData")} onData={(d) => set("orelhinhaData", d)} />
           <TriRow label="Pezinho" status={f.pezinho} data={f.pezinhoData} onStatus={triagem("pezinho", "pezinhoData")} onData={(d) => set("pezinhoData", d)} />
         </Section>
@@ -620,10 +640,13 @@ export default function EvolucaoPage() {
               ))}
             </div>
           </Field>
-          <div className="flex flex-wrap items-center gap-2">
+          <div>
             <Checkbox label="Icterícia" checked={f.ictericia} onChange={(v) => set("ictericia", v)} />
             {f.ictericia && (
-              <Field label="Kramer"><TextInput inputMode="numeric" value={f.kramer} onChange={(e) => set("kramer", e.target.value)} className="w-20" /></Field>
+              <div className="mt-2 rounded-lg border border-border p-2">
+                <p className="mb-1 text-xs font-medium text-muted">Zonas de Kramer — clique até onde vai a icterícia</p>
+                <KramerSelector value={Number(f.kramer) || 0} onChange={(v) => set("kramer", v ? String(v) : "")} />
+              </div>
             )}
           </div>
           <div className="rounded-lg border border-border p-2">

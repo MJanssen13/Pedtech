@@ -131,7 +131,9 @@ export interface EvolucaoForm {
   coracaozinhoData: string;
   satMSD: string;
   satMI: string;
-  linguinhaBristol: string;
+  linguinhaRealizado: boolean;
+  linguinhaTabby: (number | null)[]; // 4 linhas, 0..2
+  linguinhaData: string;
   orelhinha: StatusTriagem;
   orelhinhaData: string;
   pezinho: StatusTriagem;
@@ -200,7 +202,8 @@ export function emptyForm(): EvolucaoForm {
     alimentacaoTipo: "AME", alimentacaoMl: "", alimentacaoIntervalo: "",
     intercorrencias: "", gluco24hModo: undefined, gluco24h: {}, glucotestes: [],
     olhinho: "aguardo", olhinhoData: "", coracaozinho: "aguardo", coracaozinhoData: "",
-    satMSD: "", satMI: "", linguinhaBristol: "", orelhinha: "aguardo", orelhinhaData: "",
+    satMSD: "", satMI: "", linguinhaRealizado: false, linguinhaTabby: [null, null, null, null], linguinhaData: "",
+    orelhinha: "aguardo", orelhinhaData: "",
     pezinho: "aguardo", pezinhoData: "",
     hepB: "aguardo", hepBData: "", bcg: "aguardo", bcgData: "",
     fototerapia: "nao_realizada", fotoInicio: "", fotoFim: "",
@@ -367,7 +370,14 @@ export function buildRenderInput(f: EvolucaoForm): RenderInput {
         satMSD: num(f.satMSD) ?? undefined,
         satMembroInferior: num(f.satMI) ?? undefined,
       },
-      linguinha: { status: "aguardo", bristol: num(f.linguinhaBristol) ?? undefined },
+      linguinha: {
+        status: f.linguinhaRealizado ? "normal" : "aguardo",
+        data: f.linguinhaData,
+        tabby:
+          f.linguinhaRealizado && f.linguinhaTabby.every((x) => x != null)
+            ? f.linguinhaTabby.reduce((s, x) => s + (x ?? 0), 0)
+            : undefined,
+      },
       orelhinha: { status: f.orelhinha, data: f.orelhinhaData },
       pezinho: { status: f.pezinho, data: f.pezinhoData },
     },

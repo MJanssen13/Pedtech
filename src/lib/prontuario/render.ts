@@ -260,9 +260,13 @@ export function renderProntuario({ patient: p, evolution: e, pesos, percentis, i
     `${M}Teste do Coraçãozinho: ${cor ? statusTxt(cor.status) + corSat + dataTxt(cor.data) : 'Aguardo'}`,
   );
   const ling = e.triagem?.linguinha;
-  push(
-    `${M}Teste da Linguinha: ${ling?.bristol != null ? `Bristol ${ling.bristol}` : triagemTxt(ling)}`,
-  );
+  const lingTxt =
+    ling?.tabby != null
+      ? `TABBY ${ling.tabby}/8${dataTxt(ling.data)}`
+      : ling?.bristol != null
+        ? `Bristol ${ling.bristol}`
+        : triagemTxt(ling);
+  push(`${M}Teste da Linguinha: ${lingTxt}`);
   push(`${M}Teste da Orelhinha: ${triagemTxt(e.triagem?.orelhinha)}`);
   push(`${M}Teste do Pezinho: ${triagemTxt(e.triagem?.pezinho)}`);
   push(SEP);

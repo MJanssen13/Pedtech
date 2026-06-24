@@ -129,7 +129,7 @@ export interface TriagemCoracaozinho {
 export interface Triagem {
   olhinho?: { status: StatusTriagem; data?: string };
   coracaozinho?: TriagemCoracaozinho;
-  linguinha?: { status: StatusTriagem; data?: string; bristol?: number };
+  linguinha?: { status: StatusTriagem; data?: string; bristol?: number; tabby?: number };
   orelhinha?: { status: StatusTriagem; data?: string };
   pezinho?: { status: StatusTriagem; data?: string };
 }
