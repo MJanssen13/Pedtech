@@ -10,6 +10,39 @@ export interface BiliPonto {
   x: number; // hora de vida
   y: number; // mg/dL
 }
+
+/** BT laboratorial extraída de "exames complementares" (por data). */
+export interface BTExame {
+  data: string; // ISO yyyy-mm-dd
+  valor: number; // mg/dL
+  hora?: string; // HH:mm, se constar no texto
+}
+
+/** Acha valores de BT (bilirrubina total) associados a datas no texto. */
+export function parseBTExames(texto?: string | null): BTExame[] {
+  if (!texto) return [];
+  const dateRe = /(\d{1,2})\/(\d{1,2})\/(\d{2,4})/g;
+  const idx: { iso: string; end: number; at: number }[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = dateRe.exec(texto))) {
+    const ano = m[3].length === 2 ? `20${m[3]}` : m[3];
+    idx.push({ iso: `${ano}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`, end: dateRe.lastIndex, at: m.index });
+  }
+  const out: BTExame[] = [];
+  for (let i = 0; i < idx.length; i++) {
+    const seg = texto.slice(idx[i].end, i + 1 < idx.length ? idx[i + 1].at : texto.length);
+    // "BT 4,73" mas NÃO "BD"/"BI"; aceita "BT:" ou "BT ="
+    const bt = seg.match(/\bBT\b\s*[:=]?\s*([\d]+(?:[.,]\d+)?)/i);
+    if (!bt) continue;
+    const hm = seg.match(/\b(\d{1,2})\s*[:h]\s*(\d{2})\b/);
+    out.push({
+      data: idx[i].iso,
+      valor: Number(bt[1].replace(",", ".")),
+      hora: hm ? `${hm[1].padStart(2, "0")}:${hm[2]}` : undefined,
+    });
+  }
+  return out;
+}
 export interface BiliLimiar {
   resposta: string | null; // "Yes"/"No"
   mgdl: number | null;

@@ -738,7 +738,12 @@ export default function EvolucaoPage() {
         </Section>
 
         <Section title="Bilirrubina (BiliTool / AAP 2022)">
-          <BilirubinaPanel semanasIniciais={perc.gaDias ? Math.floor(perc.gaDias / 7) : undefined} />
+          <BilirubinaPanel
+            semanasIniciais={perc.gaDias ? Math.floor(perc.gaDias / 7) : undefined}
+            nascimentoEm={f.dn ? `${f.dn}T${f.hn || "00:00"}` : undefined}
+            bilicheck={f.bilicheckValor ? { valor: f.bilicheckValor, data: f.bilicheckData, hora: f.bilicheckHora } : undefined}
+            examesComplementares={f.examesComplementares}
+          />
         </Section>
 
         <Section

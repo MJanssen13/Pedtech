@@ -13,7 +13,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { Field, TextInput, Checkbox, Grid } from "@/components/ui";
-import type { BilitoolResult } from "@/lib/clinical/bilitool";
+import { parseBTExames, type BilitoolResult } from "@/lib/clinical/bilitool";
 
 const FATORES = [
   "IG < 38 semanas",
@@ -24,26 +24,65 @@ const FATORES = [
 ];
 
 interface Medicao {
-  idadeHoras: string;
+  quando: string; // datetime-local
   valor: string;
   tipo: "TcB" | "TSB";
+  rotulo?: string;
 }
 
-export function BilirubinaPanel({ semanasIniciais }: { semanasIniciais?: number }) {
+const dm = (iso: string) => {
+  const d = new Date(iso + "T00:00:00");
+  return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
+};
+
+export function BilirubinaPanel({
+  semanasIniciais,
+  nascimentoEm,
+  bilicheck,
+  examesComplementares,
+}: {
+  semanasIniciais?: number;
+  nascimentoEm?: string; // "YYYY-MM-DDTHH:mm"
+  bilicheck?: { valor: string; data: string; hora: string };
+  examesComplementares?: string;
+}) {
   const [semanas, setSemanas] = useState(semanasIniciais ? String(semanasIniciais) : "");
   const [fatores, setFatores] = useState<boolean[]>(FATORES.map(() => false));
-  const [medicoes, setMedicoes] = useState<Medicao[]>([{ idadeHoras: "", valor: "", tipo: "TcB" }]);
+  const [medicoes, setMedicoes] = useState<Medicao[]>([]);
   const [result, setResult] = useState<BilitoolResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState("");
+
+  const horasDeVida = (quando: string): number | null => {
+    if (!nascimentoEm || !quando) return null;
+    const h = (new Date(quando).getTime() - new Date(nascimentoEm).getTime()) / 3_600_000;
+    return Number.isFinite(h) ? Math.round(h) : null;
+  };
+
+  const importar = () => {
+    const novos: Medicao[] = [];
+    if (bilicheck?.valor && bilicheck.data) {
+      novos.push({ quando: `${bilicheck.data}T${bilicheck.hora || "08:00"}`, valor: bilicheck.valor, tipo: "TcB", rotulo: "BiliChek" });
+    }
+    for (const bt of parseBTExames(examesComplementares)) {
+      novos.push({
+        quando: `${bt.data}T${bt.hora || "08:00"}`,
+        valor: String(bt.valor),
+        tipo: "TSB",
+        rotulo: `Lab ${dm(bt.data)}${bt.hora ? "" : " — confirme a hora"}`,
+      });
+    }
+    if (novos.length) setMedicoes(novos);
+  };
 
   const calcular = async () => {
     setErro("");
     setLoading(true);
     try {
       const pares = medicoes
-        .map((m) => ({ idadeHoras: Number(m.idadeHoras), tsb: Number(m.valor.replace(",", ".")) }))
-        .filter((p) => Number.isFinite(p.idadeHoras) && Number.isFinite(p.tsb) && p.tsb > 0);
+        .map((m) => ({ idadeHoras: horasDeVida(m.quando), tsb: Number(String(m.valor).replace(",", ".")) }))
+        .filter((p): p is { idadeHoras: number; tsb: number } => p.idadeHoras != null && Number.isFinite(p.tsb) && p.tsb > 0);
+      if (!pares.length) throw new Error("Sem medições válidas (informe DN/HN e hora da coleta).");
       const res = await fetch("/api/bilitool", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -76,9 +115,7 @@ export function BilirubinaPanel({ semanasIniciais }: { semanasIniciais?: number 
     [result.curvas.fototerapia, result.curvas.escalonamento, result.curvas.exsanguineo, result.paciente].forEach((arr) =>
       arr.forEach((p) => p.x <= maxX && xs.add(p.x)),
     );
-    return [...xs]
-      .sort((a, b) => a - b)
-      .map((x) => ({ x, foto: fm[x] ?? null, escal: em[x] ?? null, exch: xm[x] ?? null, pac: pm[x] ?? null }));
+    return [...xs].sort((a, b) => a - b).map((x) => ({ x, foto: fm[x] ?? null, escal: em[x] ?? null, exch: xm[x] ?? null, pac: pm[x] ?? null }));
   }, [result, maxX]);
 
   const upd = (i: number, patch: Partial<Medicao>) => {
@@ -88,6 +125,7 @@ export function BilirubinaPanel({ semanasIniciais }: { semanasIniciais?: number 
   };
 
   const semNum = Number(semanas);
+  const semBirth = !nascimentoEm;
 
   return (
     <div className="space-y-3">
@@ -99,36 +137,48 @@ export function BilirubinaPanel({ semanasIniciais }: { semanasIniciais?: number 
 
       <Field label="Fatores de risco de neurotoxicidade (AAP 2022)">
         <div className="flex flex-col gap-1.5">
-          {FATORES.map((f, i) => (
-            <Checkbox key={i} label={f} checked={fatores[i]} onChange={(v) => setFatores(fatores.map((x, j) => (j === i ? v : x)))} />
+          {FATORES.map((ff, i) => (
+            <Checkbox key={i} label={ff} checked={fatores[i]} onChange={(v) => setFatores(fatores.map((x, j) => (j === i ? v : x)))} />
           ))}
         </div>
       </Field>
 
       <div className="rounded-lg border border-border p-2">
-        <div className="mb-1.5 flex items-center justify-between">
-          <span className="text-xs font-medium text-muted">Medições (hora de vida + BT)</span>
-          <button type="button" className="text-xs text-primary underline" onClick={() => setMedicoes([...medicoes, { idadeHoras: "", valor: "", tipo: "TcB" }])}>
-            + medição
-          </button>
+        <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
+          <span className="text-xs font-medium text-muted">Medições (data/hora + BT)</span>
+          <div className="flex gap-2">
+            <button type="button" className="text-xs text-primary underline" onClick={importar}>
+              ⤓ Importar BiliChek + exames (BT)
+            </button>
+            <button type="button" className="text-xs text-primary underline" onClick={() => setMedicoes([...medicoes, { quando: "", valor: "", tipo: "TcB" }])}>
+              + medição
+            </button>
+          </div>
         </div>
-        {medicoes.map((m, i) => (
-          <Grid key={i} cols={3}>
-            <Field label="Hora de vida"><TextInput inputMode="numeric" value={m.idadeHoras} onChange={(e) => upd(i, { idadeHoras: e.target.value })} placeholder="h" /></Field>
-            <Field label="BT (mg/dL)"><TextInput inputMode="decimal" value={m.valor} onChange={(e) => upd(i, { valor: e.target.value })} /></Field>
-            <div className="flex items-end gap-1">
-              <Field label="Tipo">
-                <select value={m.tipo} onChange={(e) => upd(i, { tipo: e.target.value as Medicao["tipo"] })} className="w-full rounded-lg border border-border bg-white px-2 py-2">
-                  <option value="TcB">BiliChek (TcB)</option>
-                  <option value="TSB">Sérica (TSB)</option>
-                </select>
-              </Field>
-              {medicoes.length > 1 && (
-                <button type="button" className="pb-2 text-xs text-red-500" onClick={() => setMedicoes(medicoes.filter((_, j) => j !== i))}>×</button>
-              )}
+        {semBirth && <p className="mb-1 text-xs text-amber-600">Informe DN e HN (identificação) para calcular as horas de vida.</p>}
+        {medicoes.length === 0 && <p className="text-xs text-muted">Use &quot;Importar&quot; para puxar o BiliChek e os BT dos exames, ou adicione manualmente.</p>}
+        {medicoes.map((m, i) => {
+          const hv = horasDeVida(m.quando);
+          return (
+            <div key={i} className="mb-1 rounded-md border border-border p-1.5">
+              {m.rotulo && <div className="mb-1 text-[11px] font-medium text-primary">{m.rotulo}</div>}
+              <Grid cols={3}>
+                <Field label="Data/hora coleta"><TextInput type="datetime-local" value={m.quando} onChange={(e) => upd(i, { quando: e.target.value })} /></Field>
+                <Field label="BT (mg/dL)"><TextInput inputMode="decimal" value={m.valor} onChange={(e) => upd(i, { valor: e.target.value })} /></Field>
+                <div className="flex items-end gap-1">
+                  <Field label="Tipo">
+                    <select value={m.tipo} onChange={(e) => upd(i, { tipo: e.target.value as Medicao["tipo"] })} className="w-full rounded-lg border border-border bg-white px-2 py-2">
+                      <option value="TcB">BiliChek</option>
+                      <option value="TSB">Sérica</option>
+                    </select>
+                  </Field>
+                  <button type="button" className="pb-2 text-xs text-red-500" onClick={() => setMedicoes(medicoes.filter((_, j) => j !== i))}>×</button>
+                </div>
+              </Grid>
+              <div className="mt-0.5 text-[11px] text-muted">{hv != null ? `${hv} h de vida` : "—"}</div>
             </div>
-          </Grid>
-        ))}
+          );
+        })}
       </div>
 
       <button type="button" onClick={calcular} disabled={loading} className="rounded-md bg-primary px-3 py-1.5 text-sm text-white disabled:opacity-40">
