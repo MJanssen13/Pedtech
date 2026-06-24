@@ -16,8 +16,12 @@ import {
   emptyForm,
   buildRenderInput,
   computePercentis,
+  GLUCO_24H,
   type EvolucaoForm,
 } from "@/lib/prontuario/form";
+import { calcularHorasDeVida } from "@/lib/clinical/hours-of-life";
+import { calcularTendenciaPeso } from "@/lib/clinical/weight";
+import { WeightChart } from "@/components/WeightChart";
 import { renderProntuario } from "@/lib/prontuario/render";
 import { ImportFicha } from "@/components/ImportFicha";
 import type {
@@ -86,6 +90,29 @@ export default function EvolucaoPage() {
         if (!v || v === "aguardo") next[dataKey] = "";
         return next;
       });
+
+  const horasVida = useMemo(() => {
+    if (!f.dn) return null;
+    const nasc = f.hn ? `${f.dn}T${f.hn}:00` : `${f.dn}T00:00:00`;
+    try {
+      return calcularHorasDeVida({
+        nascimento: new Date(nasc).toISOString(),
+        diaEvolucao: f.dataEvolucao,
+        horaCorte: f.corteHorario,
+      }).horas;
+    } catch {
+      return null;
+    }
+  }, [f.dn, f.hn, f.dataEvolucao, f.corteHorario]);
+
+  const trendPeso = useMemo(() => {
+    const serie = f.pesos
+      .filter((p) => p.gramas)
+      .map((p) => ({ data: p.data, gramas: Number(p.gramas), nascimento: p.nascimento }));
+    const atual = Number(String(f.pesoAtualG).replace(",", "."));
+    if (f.pesoAtualG.trim() && !Number.isNaN(atual)) serie.push({ data: f.dataEvolucao, gramas: atual, nascimento: false });
+    return calcularTendenciaPeso(serie);
+  }, [f.pesos, f.pesoAtualG, f.dataEvolucao]);
 
   const perc = useMemo(() => computePercentis(f), [f]);
   const percHint = (s?: string) =>
@@ -206,74 +233,6 @@ export default function EvolucaoPage() {
           <Field label="Evolução do nascimento (descrição da sala de parto)">
             <TextArea value={f.nascimentoDescricao} onChange={(e) => set("nascimentoDescricao", e.target.value)} />
           </Field>
-        </Section>
-
-        <Section
-          title="Acompanhamento de peso"
-          right={
-            <button
-              type="button"
-              className="text-xs text-primary underline"
-              onClick={() =>
-                set("pesos", [...f.pesos, { data: "", gramas: "", nascimento: false }])
-              }
-            >
-              + linha
-            </button>
-          }
-        >
-          <Field label="Peso atual (hoje)">
-            <TextInput inputMode="numeric" value={f.pesoAtualG} onChange={(e) => set("pesoAtualG", e.target.value)} placeholder="gramas" />
-          </Field>
-          {f.pesos.map((p, i) => (
-            <Grid key={i} cols={3}>
-              <Field label="Data">
-                <TextInput
-                  type="date"
-                  value={p.data}
-                  onChange={(e) => {
-                    const arr = [...f.pesos];
-                    arr[i] = { ...arr[i], data: e.target.value };
-                    set("pesos", arr);
-                  }}
-                />
-              </Field>
-              <Field label="Peso (g)">
-                <TextInput
-                  inputMode="numeric"
-                  value={p.gramas}
-                  onChange={(e) => {
-                    const arr = [...f.pesos];
-                    arr[i] = { ...arr[i], gramas: e.target.value };
-                    set("pesos", arr);
-                  }}
-                />
-              </Field>
-              <div className="flex items-end gap-2">
-                <Checkbox
-                  label="Nascimento"
-                  checked={p.nascimento}
-                  onChange={(v) => {
-                    const arr = [...f.pesos];
-                    arr[i] = { ...arr[i], nascimento: v };
-                    set("pesos", arr);
-                  }}
-                />
-                <button
-                  type="button"
-                  className="pb-2 text-xs text-red-500"
-                  onClick={() => set("pesos", f.pesos.filter((_, j) => j !== i))}
-                >
-                  remover
-                </button>
-              </div>
-            </Grid>
-          ))}
-          {f.pesos.length === 0 && (
-            <p className="text-xs text-muted">
-              Adicione o peso de nascimento e os pesos seriados para calcular variação.
-            </p>
-          )}
         </Section>
 
         <Section title="Idade gestacional">
@@ -533,24 +492,67 @@ export default function EvolucaoPage() {
           <TextArea value={f.intercorrencias} onChange={(e) => set("intercorrencias", e.target.value)} placeholder="Se vazio: Nega" />
         </Section>
 
-        <Section
-          title="Glucotestes"
-          right={
-            <button type="button" className="text-xs text-primary underline" onClick={() => set("glucotestes", [...f.glucotestes, { hora: "", valor: "" }])}>
-              + hora
-            </button>
-          }
-        >
-          {f.glucotestes.map((g, i) => (
-            <Grid key={i}>
-              <Field label="Hora"><TextInput value={g.hora} onChange={(e) => { const a = [...f.glucotestes]; a[i] = { ...a[i], hora: e.target.value }; set("glucotestes", a); }} placeholder="08h" /></Field>
-              <div className="flex items-end gap-2">
-                <Field label="Valor"><TextInput inputMode="numeric" value={g.valor} onChange={(e) => { const a = [...f.glucotestes]; a[i] = { ...a[i], valor: e.target.value }; set("glucotestes", a); }} /></Field>
-                <button type="button" className="pb-2 text-xs text-red-500" onClick={() => set("glucotestes", f.glucotestes.filter((_, j) => j !== i))}>×</button>
-              </div>
+        <Section title="Glucotestes">
+          <Field label="Realizado nas primeiras 24h?">
+            <SegGroup
+              options={[
+                { value: "sim", label: "Sim" },
+                { value: "nao_indicado", label: "Não indicado" },
+              ]}
+              value={f.gluco24hModo}
+              onChange={(v) => set("gluco24hModo", v)}
+            />
+          </Field>
+          {f.gluco24hModo === "sim" && (
+            <Grid cols={4}>
+              {GLUCO_24H.map((g) => (
+                <Field key={g.key} label={`${g.rotulo} hora`}>
+                  <TextInput
+                    inputMode="numeric"
+                    value={f.gluco24h[g.key] ?? ""}
+                    onChange={(e) => set("gluco24h", { ...f.gluco24h, [g.key]: e.target.value })}
+                  />
+                </Field>
+              ))}
             </Grid>
-          ))}
-          {f.glucotestes.length === 0 && <p className="text-xs text-muted">Sem glucotestes.</p>}
+          )}
+
+          {(horasVida == null || horasVida > 24) && (
+            <div className="mt-1 rounded-lg border border-border p-2">
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-sm font-medium">Últimas 24h</span>
+                <button
+                  type="button"
+                  className="text-xs text-primary underline"
+                  onClick={() => set("glucotestes", [...f.glucotestes, { hora: "", valor: "" }])}
+                >
+                  + horário
+                </button>
+              </div>
+              {f.glucotestes.length === 0 && <p className="text-xs text-muted">Sem registros.</p>}
+              {f.glucotestes.map((g, i) => (
+                <Grid key={i}>
+                  <Field label="Horário">
+                    <TextInput
+                      value={g.hora}
+                      onChange={(e) => { const a = [...f.glucotestes]; a[i] = { ...a[i], hora: e.target.value }; set("glucotestes", a); }}
+                      placeholder="08h"
+                    />
+                  </Field>
+                  <div className="flex items-end gap-2">
+                    <Field label="DTX">
+                      <TextInput
+                        inputMode="numeric"
+                        value={g.valor}
+                        onChange={(e) => { const a = [...f.glucotestes]; a[i] = { ...a[i], valor: e.target.value }; set("glucotestes", a); }}
+                      />
+                    </Field>
+                    <button type="button" className="pb-2 text-xs text-red-500" onClick={() => set("glucotestes", f.glucotestes.filter((_, j) => j !== i))}>×</button>
+                  </div>
+                </Grid>
+              ))}
+            </div>
+          )}
         </Section>
 
         <Section title="Testes de triagem">
@@ -624,6 +626,51 @@ export default function EvolucaoPage() {
               <Field label="Kramer"><TextInput inputMode="numeric" value={f.kramer} onChange={(e) => set("kramer", e.target.value)} className="w-20" /></Field>
             )}
           </div>
+          <div className="rounded-lg border border-border p-2">
+            <Checkbox label="BiliChek realizado" checked={f.bilicheckOn} onChange={(v) => set("bilicheckOn", v)} />
+            {f.bilicheckOn && (
+              <Grid cols={3}>
+                <Field label="Valor (mg/dL)"><TextInput inputMode="decimal" value={f.bilicheckValor} onChange={(e) => set("bilicheckValor", e.target.value)} /></Field>
+                <Field label="Data"><TextInput type="date" value={f.bilicheckData} onChange={(e) => set("bilicheckData", e.target.value)} /></Field>
+                <Field label="Hora"><TextInput type="time" value={f.bilicheckHora} onChange={(e) => set("bilicheckHora", e.target.value)} /></Field>
+              </Grid>
+            )}
+          </div>
+        </Section>
+
+        <Section
+          title="Acompanhamento de peso"
+          right={
+            <button
+              type="button"
+              className="text-xs text-primary underline"
+              onClick={() => set("pesos", [...f.pesos, { data: "", gramas: "", nascimento: false }])}
+            >
+              + linha
+            </button>
+          }
+        >
+          <p className="text-xs text-muted">
+            Peso atual (do exame físico): <strong className="text-foreground">{f.pesoAtualG || "—"}</strong> g
+          </p>
+          {f.pesos.map((p, i) => (
+            <Grid key={i} cols={3}>
+              <Field label="Data">
+                <TextInput type="date" value={p.data} onChange={(e) => { const a = [...f.pesos]; a[i] = { ...a[i], data: e.target.value }; set("pesos", a); }} />
+              </Field>
+              <Field label="Peso (g)">
+                <TextInput inputMode="numeric" value={p.gramas} onChange={(e) => { const a = [...f.pesos]; a[i] = { ...a[i], gramas: e.target.value }; set("pesos", a); }} />
+              </Field>
+              <div className="flex items-end gap-2">
+                <Checkbox label="Nascimento" checked={p.nascimento} onChange={(v) => { const a = [...f.pesos]; a[i] = { ...a[i], nascimento: v }; set("pesos", a); }} />
+                <button type="button" className="pb-2 text-xs text-red-500" onClick={() => set("pesos", f.pesos.filter((_, j) => j !== i))}>remover</button>
+              </div>
+            </Grid>
+          ))}
+          {f.pesos.length === 0 && (
+            <p className="text-xs text-muted">Adicione o peso de nascimento e os pesos seriados para ver a variação e os gráficos.</p>
+          )}
+          <WeightChart linhas={trendPeso} />
         </Section>
 
         <Section title="Exames complementares">

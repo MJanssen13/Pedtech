@@ -113,6 +113,12 @@ export interface Glucoteste {
   valor: number | null;
 }
 
+/** Glucotestes das primeiras 24h (esquema fixo 1ª/3ª/6ª/9ª/12ª/18ª/24ª). */
+export interface GlucoPrimeiras24h {
+  modo?: 'sim' | 'nao_indicado';
+  valores: { rotulo: string; valor: number | null }[];
+}
+
 export interface TriagemCoracaozinho {
   status: StatusTriagem;
   data?: string;
@@ -187,7 +193,8 @@ export interface Evolution {
   peso_atual_g: number | null;
   evolucao: BlocoEvolucao;
   intercorrencias: string | null;
-  glucotestes: Glucoteste[];
+  glucotestes: Glucoteste[]; // últimas 24h / hoje
+  gluco_primeiras_24h?: GlucoPrimeiras24h;
   triagem: Triagem;
   vacinacao: Vacinacao;
   fototerapia: Fototerapia;

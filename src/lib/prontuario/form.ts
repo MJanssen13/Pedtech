@@ -31,6 +31,17 @@ export interface GlucoForm {
   hora: string;
   valor: string;
 }
+
+/** Esquema fixo dos glucotestes das primeiras 24h. */
+export const GLUCO_24H: { key: string; rotulo: string }[] = [
+  { key: "1", rotulo: "1ª" },
+  { key: "3", rotulo: "3ª" },
+  { key: "6", rotulo: "6ª" },
+  { key: "9", rotulo: "9ª" },
+  { key: "12", rotulo: "12ª" },
+  { key: "18", rotulo: "18ª" },
+  { key: "24", rotulo: "24ª" },
+];
 export interface HipoForm {
   hora: string;
   dtx: string;
@@ -109,7 +120,9 @@ export interface EvolucaoForm {
   alimentacaoIntervalo: string;
 
   intercorrencias: string;
-  glucotestes: GlucoForm[];
+  gluco24hModo?: "sim" | "nao_indicado";
+  gluco24h: Record<string, string>;
+  glucotestes: GlucoForm[]; // últimas 24h / hoje
 
   // Triagem
   olhinho: StatusTriagem;
@@ -157,6 +170,10 @@ export interface EvolucaoForm {
   reflexos: Record<string, boolean>;
   ictericia: boolean;
   kramer: string;
+  bilicheckOn: boolean;
+  bilicheckValor: string;
+  bilicheckData: string;
+  bilicheckHora: string;
 
   examesComplementares: string;
   condutas: string;
@@ -181,7 +198,7 @@ export function emptyForm(): EvolucaoForm {
     queixas: [], hipoglicemias: [], outrasQueixas: "",
     diurese: "presente", meconio: "presente",
     alimentacaoTipo: "AME", alimentacaoMl: "", alimentacaoIntervalo: "",
-    intercorrencias: "", glucotestes: [],
+    intercorrencias: "", gluco24hModo: undefined, gluco24h: {}, glucotestes: [],
     olhinho: "aguardo", olhinhoData: "", coracaozinho: "aguardo", coracaozinhoData: "",
     satMSD: "", satMI: "", linguinhaBristol: "", orelhinha: "aguardo", orelhinhaData: "",
     pezinho: "aguardo", pezinhoData: "",
@@ -194,6 +211,7 @@ export function emptyForm(): EvolucaoForm {
     membrosAlt: false, membrosTexto: "", fant: "", fpost: "",
     reflexos: Object.fromEntries(REFLEXOS_NEURO.map((r) => [r, true])),
     ictericia: false, kramer: "",
+    bilicheckOn: false, bilicheckValor: "", bilicheckData: "", bilicheckHora: "",
     examesComplementares: "",
     condutas: CONDUTAS_PADRAO.join("\n"),
   };
@@ -337,6 +355,10 @@ export function buildRenderInput(f: EvolucaoForm): RenderInput {
     glucotestes: f.glucotestes
       .filter((g) => g.hora || g.valor)
       .map((g) => ({ hora: g.hora, valor: num(g.valor) })),
+    gluco_primeiras_24h: {
+      modo: f.gluco24hModo,
+      valores: GLUCO_24H.map((g) => ({ rotulo: g.rotulo, valor: num(f.gluco24h[g.key] ?? "") })),
+    },
     triagem: {
       olhinho: { status: f.olhinho, data: f.olhinhoData },
       coracaozinho: {
@@ -369,6 +391,10 @@ export function buildRenderInput(f: EvolucaoForm): RenderInput {
       membros: sistema(f.membrosAlt, f.membrosTexto),
       neurologico: { reflexos: f.reflexos },
       ictericia: { presente: f.ictericia, kramer: num(f.kramer) ?? undefined },
+      bilicheck:
+        f.bilicheckOn && num(f.bilicheckValor) != null
+          ? { valor: num(f.bilicheckValor)!, data: f.bilicheckData || undefined, hora: f.bilicheckHora || undefined }
+          : undefined,
     },
     exames_complementares: f.examesComplementares || null,
     condutas: f.condutas || null,

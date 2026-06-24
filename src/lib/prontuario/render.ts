@@ -233,10 +233,19 @@ export function renderProntuario({ patient: p, evolution: e, pesos, percentis, i
   push(SEP);
 
   push('GLUCOTESTES:');
-  if (e.glucotestes?.length) {
-    for (const g of e.glucotestes) push(`${g.hora}: ${g.valor ?? ''}`);
+  const g24 = e.gluco_primeiras_24h;
+  if (g24?.modo === 'nao_indicado') {
+    push(`${M}Primeiras 24h: Não indicado`);
+  } else if (g24?.modo === 'sim') {
+    push(`${M}Primeiras 24h:`);
+    for (const v of g24.valores) push(`${v.rotulo}/ ${v.valor ?? ''}`);
+  }
+  const glucoHoje = e.glucotestes ?? [];
+  if (glucoHoje.length) {
+    push(`${M}Hoje:`);
+    for (const g of glucoHoje) push(`${g.hora}: ${g.valor ?? ''}`);
   } else {
-    push('-');
+    push(`${M}Hoje: -`);
   }
   push(SEP);
 
