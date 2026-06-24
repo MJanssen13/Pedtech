@@ -6,6 +6,7 @@ import {
   Field,
   TextInput,
   TextArea,
+  Select,
   SegGroup,
   MultiGroup,
   Checkbox,
@@ -19,7 +20,6 @@ import {
 } from "@/lib/prontuario/form";
 import { renderProntuario } from "@/lib/prontuario/render";
 import { ImportFicha } from "@/components/ImportFicha";
-import { REFLEXOS_NEURO } from "@/lib/clinical/exam-defaults";
 import type {
   Sexo,
   ViaNascimento,
@@ -27,13 +27,35 @@ import type {
   TipoAlimentacao,
   StatusTriagem,
   StatusVacina,
+  Vinculo,
+  Pega,
+  Succao,
+  Producao,
+  Queixa,
+  ProfilaxiaModo,
 } from "@/lib/domain/types";
+import {
+  REFLEXOS_NEURO,
+  EXAME_GERAL_NORMAL,
+  EXAME_ACV_NORMAL,
+  EXAME_AR_NORMAL,
+  EXAME_ABDOME_NORMAL,
+  EXAME_COTO_NORMAL,
+  EXAME_MEMBROS_NORMAL,
+  genitaliaNormal,
+} from "@/lib/clinical/exam-defaults";
 
 const triagemOpts: { value: StatusTriagem; label: string }[] = [
   { value: "normal", label: "Normal" },
   { value: "alterado", label: "Alterado" },
   { value: "aguardo", label: "Aguardo" },
 ];
+const rhOpts = [
+  { value: "positivo", label: "Positivo" },
+  { value: "negativo", label: "Negativo" },
+];
+const aboOpts = ["A", "B", "O", "AB"].map((v) => ({ value: v, label: v }));
+const hojeStr = () => new Date().toISOString().slice(0, 10);
 const vacinaOpts: { value: StatusVacina; label: string }[] = [
   { value: "realizada", label: "Realizada" },
   { value: "aguardo", label: "Aguardo" },
@@ -51,6 +73,19 @@ export default function EvolucaoPage() {
       return `Erro ao gerar: ${(e as Error).message}`;
     }
   }, [f]);
+
+  const triagem =
+    (
+      statusKey: "olhinho" | "coracaozinho" | "orelhinha" | "pezinho",
+      dataKey: "olhinhoData" | "coracaozinhoData" | "orelhinhaData" | "pezinhoData",
+    ) =>
+    (v?: StatusTriagem) =>
+      setForm((prev) => {
+        const next = { ...prev, [statusKey]: v ?? "aguardo" } as EvolucaoForm;
+        if ((v === "normal" || v === "alterado") && !prev[dataKey]) next[dataKey] = hojeStr();
+        if (!v || v === "aguardo") next[dataKey] = "";
+        return next;
+      });
 
   const perc = useMemo(() => computePercentis(f), [f]);
   const percHint = (s?: string) =>
@@ -243,7 +278,16 @@ export default function EvolucaoPage() {
 
         <Section title="Idade gestacional">
           <Field label="IG pela DUM">
-            <TextInput value={f.igDum} onChange={(e) => set("igDum", e.target.value)} placeholder="ex.: incerta / 39 semanas" />
+            <div className="flex items-center gap-2">
+              <TextInput
+                value={f.igDumIncerta ? "incerta" : f.igDum}
+                disabled={f.igDumIncerta}
+                onChange={(e) => set("igDum", e.target.value)}
+                placeholder="ex.: 39 semanas e 2 dias"
+                className={f.igDumIncerta ? "opacity-50" : ""}
+              />
+              <Checkbox label="Incerta" checked={f.igDumIncerta} onChange={(v) => set("igDumIncerta", v)} />
+            </div>
           </Field>
           <Field label="IG pelo USG">
             <TextInput value={f.igUsg} onChange={(e) => set("igUsg", e.target.value)} placeholder="ex.: 38 semanas e 4 dias (US ...)" />
@@ -272,27 +316,39 @@ export default function EvolucaoPage() {
           <Field label="Tempo de bolsa rota (BR)">
             <TextInput value={f.tempoBR} onChange={(e) => set("tempoBR", e.target.value)} placeholder="ex.: no ato / 36h" />
           </Field>
-          <Grid cols={3}>
-            <Field label="Profilaxia">
-              <TextInput value={f.profMedicamento} onChange={(e) => set("profMedicamento", e.target.value)} placeholder="Penicilina..." />
-            </Field>
-            <Field label="Data">
-              <TextInput type="date" value={f.profData} onChange={(e) => set("profData", e.target.value)} />
-            </Field>
-            <Field label="Hora">
-              <TextInput type="time" value={f.profHora} onChange={(e) => set("profHora", e.target.value)} />
-            </Field>
-          </Grid>
+          <Field label="Profilaxia">
+            <SegGroup<ProfilaxiaModo>
+              options={[
+                { value: "nao_se_aplica", label: "Não se aplica" },
+                { value: "nao_realizado", label: "Não realizado" },
+              ]}
+              value={f.profilaxiaModo}
+              onChange={(v) => set("profilaxiaModo", v)}
+            />
+          </Field>
+          {!f.profilaxiaModo && (
+            <Grid cols={3}>
+              <Field label="Medicamento">
+                <TextInput value={f.profMedicamento} onChange={(e) => set("profMedicamento", e.target.value)} placeholder="Penicilina..." />
+              </Field>
+              <Field label="Data">
+                <TextInput type="date" value={f.profData} onChange={(e) => set("profData", e.target.value)} />
+              </Field>
+              <Field label="Hora">
+                <TextInput type="time" value={f.profHora} onChange={(e) => set("profHora", e.target.value)} />
+              </Field>
+            </Grid>
+          )}
         </Section>
 
         <Section title="Tipagem">
           <Grid cols={3}>
-            <Field label="Mãe ABO"><TextInput value={f.maeABO} onChange={(e) => set("maeABO", e.target.value)} /></Field>
-            <Field label="Mãe Rh"><TextInput value={f.maeRh} onChange={(e) => set("maeRh", e.target.value)} /></Field>
-            <Field label="Coombs indireto"><TextInput value={f.ci} onChange={(e) => set("ci", e.target.value)} /></Field>
-            <Field label="RN ABO"><TextInput value={f.rnABO} onChange={(e) => set("rnABO", e.target.value)} /></Field>
-            <Field label="RN Rh"><TextInput value={f.rnRh} onChange={(e) => set("rnRh", e.target.value)} /></Field>
-            <Field label="Coombs direto"><TextInput value={f.cd} onChange={(e) => set("cd", e.target.value)} /></Field>
+            <Field label="Mãe ABO"><Select value={f.maeABO} onChange={(v) => set("maeABO", v)} options={aboOpts} /></Field>
+            <Field label="Mãe Rh"><Select value={f.maeRh} onChange={(v) => set("maeRh", v)} options={rhOpts} /></Field>
+            <Field label="Coombs indireto"><Select value={f.ci} onChange={(v) => set("ci", v)} options={rhOpts} placeholder="aguardo" /></Field>
+            <Field label="RN ABO"><Select value={f.rnABO} onChange={(v) => set("rnABO", v)} options={aboOpts} /></Field>
+            <Field label="RN Rh"><Select value={f.rnRh} onChange={(v) => set("rnRh", v)} options={rhOpts} /></Field>
+            <Field label="Coombs direto"><Select value={f.cd} onChange={(v) => set("cd", v)} options={rhOpts} placeholder="aguardo" /></Field>
           </Grid>
         </Section>
 
@@ -310,57 +366,84 @@ export default function EvolucaoPage() {
                 { value: "mae", label: "Mãe" },
                 { value: "pai", label: "Pai" },
                 { value: "avo", label: "Avó" },
+                { value: "tia", label: "Tia" },
+                { value: "irma", label: "Irmã" },
                 { value: "outro", label: "Outro" },
               ]}
               value={f.acompanhantes}
               onChange={(v) => set("acompanhantes", v)}
             />
           </Field>
+          {f.acompanhantes.includes("outro") && (
+            <Field label="Outro — qual parentesco?">
+              <TextInput value={f.acompanhanteOutro} onChange={(e) => set("acompanhanteOutro", e.target.value)} placeholder="ex.: madrinha" />
+            </Field>
+          )}
           <Grid>
             <Field label="Vínculo">
-              <SegGroup
+              <SegGroup<Vinculo>
                 options={[
-                  { value: "bom vínculo", label: "Bom vínculo" },
-                  { value: "distanciamento", label: "Distanciamento" },
+                  { value: "bom", label: "Bom" },
+                  { value: "moderado", label: "Moderado" },
+                  { value: "prejudicado", label: "Prejudicado" },
                 ]}
                 value={f.vinculo}
-                onChange={(v) => set("vinculo", v ?? "")}
+                onChange={(v) => set("vinculo", v ?? "bom")}
                 allowClear={false}
               />
             </Field>
             <Field label="Pega">
-              <SegGroup
-                options={[{ value: "boa", label: "Boa" }, { value: "inadequada", label: "Inadequada" }]}
+              <SegGroup<Pega>
+                options={[
+                  { value: "boa", label: "Boa pega" },
+                  { value: "dificultosa", label: "Dificultosa" },
+                  { value: "nao_realizada", label: "Não realizada" },
+                ]}
                 value={f.pega}
-                onChange={(v) => set("pega", v as EvolucaoForm["pega"])}
+                onChange={(v) => set("pega", v)}
               />
             </Field>
-            <Field label="Sucção">
-              <SegGroup
-                options={[{ value: "boa", label: "Boa" }, { value: "ineficiente", label: "Ineficiente" }]}
-                value={f.succao}
-                onChange={(v) => set("succao", v as EvolucaoForm["succao"])}
-              />
-            </Field>
+            {f.pega !== "nao_realizada" && (
+              <Field label="Sucção">
+                <SegGroup<Succao>
+                  options={[
+                    { value: "adequada", label: "Adequada" },
+                    { value: "ineficiente", label: "Ineficiente" },
+                    { value: "dolorosa", label: "Dolorosa" },
+                  ]}
+                  value={f.succao}
+                  onChange={(v) => set("succao", v)}
+                />
+              </Field>
+            )}
             <Field label="Produção">
-              <SegGroup
-                options={[{ value: "adequada", label: "Adequada" }, { value: "baixa", label: "Baixa" }]}
+              <SegGroup<Producao>
+                options={[
+                  { value: "aumentada", label: "Aumentada" },
+                  { value: "adequada", label: "Adequada" },
+                  { value: "reduzida", label: "Reduzida" },
+                ]}
                 value={f.producao}
-                onChange={(v) => set("producao", v as EvolucaoForm["producao"])}
+                onChange={(v) => set("producao", v)}
               />
             </Field>
           </Grid>
-          <div className="flex flex-wrap gap-2">
-            <Checkbox label="Desconforto respiratório" checked={f.desconfortoResp} onChange={(v) => set("desconfortoResp", v)} />
-            <Checkbox label="Necessidade de complementação" checked={f.complementacao} onChange={(v) => set("complementacao", v)} />
-          </div>
-          {f.complementacao && (
-            <Grid cols={3}>
-              <Field label="Hora"><TextInput type="time" value={f.compHora} onChange={(e) => set("compHora", e.target.value)} /></Field>
-              <Field label="Destro"><TextInput inputMode="numeric" value={f.compDestro} onChange={(e) => set("compDestro", e.target.value)} /></Field>
-              <Field label="Quantidade (ml)"><TextInput inputMode="numeric" value={f.compMl} onChange={(e) => set("compMl", e.target.value)} /></Field>
-            </Grid>
+          {f.vinculo === "moderado" && (
+            <Field label="Justificativa do vínculo moderado (opcional)">
+              <TextInput value={f.vinculoJustificativa} onChange={(e) => set("vinculoJustificativa", e.target.value)} />
+            </Field>
           )}
+          <Field label="Queixas">
+            <MultiGroup<Queixa>
+              options={[
+                { value: "desconforto_respiratorio", label: "Desconforto respiratório" },
+                { value: "colicas", label: "Cólicas" },
+                { value: "vomitos", label: "Vômitos" },
+              ]}
+              value={f.queixas}
+              onChange={(v) => set("queixas", v)}
+            />
+          </Field>
           <Field label="Outras queixas">
             <TextInput value={f.outrasQueixas} onChange={(e) => set("outrasQueixas", e.target.value)} />
           </Field>
@@ -393,6 +476,59 @@ export default function EvolucaoPage() {
           )}
         </Section>
 
+        <Section
+          title="Hipoglicemia"
+          right={
+            <button
+              type="button"
+              className="text-xs text-primary underline"
+              onClick={() => set("hipoglicemias", [...f.hipoglicemias, { hora: "", dtx: "", correcao: "fmi", fmiMl: "" }])}
+            >
+              + episódio
+            </button>
+          }
+        >
+          {f.hipoglicemias.length === 0 && <p className="text-xs text-muted">Sem episódios.</p>}
+          {f.hipoglicemias.map((h, i) => {
+            const upd = (patch: Partial<typeof h>) => {
+              const a = [...f.hipoglicemias];
+              a[i] = { ...a[i], ...patch };
+              set("hipoglicemias", a);
+            };
+            return (
+              <div key={i} className="rounded-lg border border-border p-2">
+                <Grid cols={2}>
+                  <Field label="Horário"><TextInput type="time" value={h.hora} onChange={(e) => upd({ hora: e.target.value })} /></Field>
+                  <Field label="DTX"><TextInput inputMode="numeric" value={h.dtx} onChange={(e) => upd({ dtx: e.target.value })} /></Field>
+                </Grid>
+                <div className="mt-2">
+                  <SegGroup
+                    options={[
+                      { value: "fmi", label: "Complementou FMI" },
+                      { value: "amamentacao", label: "Amamentação" },
+                    ]}
+                    value={h.correcao}
+                    onChange={(v) => upd({ correcao: (v ?? "fmi") as "fmi" | "amamentacao" })}
+                    allowClear={false}
+                  />
+                </div>
+                {h.correcao === "fmi" && (
+                  <Field label="Quantidade de FMI (ml)">
+                    <TextInput inputMode="numeric" value={h.fmiMl} onChange={(e) => upd({ fmiMl: e.target.value })} />
+                  </Field>
+                )}
+                <button
+                  type="button"
+                  className="mt-1 text-xs text-red-500"
+                  onClick={() => set("hipoglicemias", f.hipoglicemias.filter((_, j) => j !== i))}
+                >
+                  remover episódio
+                </button>
+              </div>
+            );
+          })}
+        </Section>
+
         <Section title="Intercorrências">
           <TextArea value={f.intercorrencias} onChange={(e) => set("intercorrencias", e.target.value)} placeholder="Se vazio: Nega" />
         </Section>
@@ -418,18 +554,20 @@ export default function EvolucaoPage() {
         </Section>
 
         <Section title="Testes de triagem">
-          <Field label="Olhinho"><SegGroup options={triagemOpts} value={f.olhinho} onChange={(v) => set("olhinho", (v ?? "aguardo") as StatusTriagem)} allowClear={false} /></Field>
-          <Field label="Coraçãozinho"><SegGroup options={triagemOpts} value={f.coracaozinho} onChange={(v) => set("coracaozinho", (v ?? "aguardo") as StatusTriagem)} allowClear={false} /></Field>
+          <TriRow label="Olhinho" status={f.olhinho} data={f.olhinhoData} onStatus={triagem("olhinho", "olhinhoData")} onData={(d) => set("olhinhoData", d)} />
+          <Field label="Coraçãozinho">
+            <SegGroup options={triagemOpts} value={f.coracaozinho} onChange={triagem("coracaozinho", "coracaozinhoData")} allowClear={false} />
+          </Field>
           {f.coracaozinho !== "aguardo" && (
             <Grid cols={3}>
               <Field label="Sat MSD"><TextInput inputMode="numeric" value={f.satMSD} onChange={(e) => set("satMSD", e.target.value)} /></Field>
-              <Field label="Sat MID/MIE"><TextInput inputMode="numeric" value={f.satMI} onChange={(e) => set("satMI", e.target.value)} /></Field>
+              <Field label="Sat MID"><TextInput inputMode="numeric" value={f.satMI} onChange={(e) => set("satMI", e.target.value)} /></Field>
               <Field label="Data"><TextInput type="date" value={f.coracaozinhoData} onChange={(e) => set("coracaozinhoData", e.target.value)} /></Field>
             </Grid>
           )}
           <Field label="Linguinha (Bristol)"><TextInput inputMode="numeric" value={f.linguinhaBristol} onChange={(e) => set("linguinhaBristol", e.target.value)} /></Field>
-          <Field label="Orelhinha"><SegGroup options={triagemOpts} value={f.orelhinha} onChange={(v) => set("orelhinha", (v ?? "aguardo") as StatusTriagem)} allowClear={false} /></Field>
-          <Field label="Pezinho"><SegGroup options={triagemOpts} value={f.pezinho} onChange={(v) => set("pezinho", (v ?? "aguardo") as StatusTriagem)} allowClear={false} /></Field>
+          <TriRow label="Orelhinha" status={f.orelhinha} data={f.orelhinhaData} onStatus={triagem("orelhinha", "orelhinhaData")} onData={(d) => set("orelhinhaData", d)} />
+          <TriRow label="Pezinho" status={f.pezinho} data={f.pezinhoData} onStatus={triagem("pezinho", "pezinhoData")} onData={(d) => set("pezinhoData", d)} />
         </Section>
 
         <Section title="Vacinação">
@@ -462,17 +600,17 @@ export default function EvolucaoPage() {
             <Field label="FC (bpm)"><TextInput inputMode="numeric" value={f.fc} onChange={(e) => set("fc", e.target.value)} /></Field>
             <Field label="FR (irpm)"><TextInput inputMode="numeric" value={f.fr} onChange={(e) => set("fr", e.target.value)} /></Field>
           </Grid>
-          <SistemaRow label="Geral" alt={f.geralAlt} texto={f.geralTexto} onAlt={(v) => set("geralAlt", v)} onTexto={(v) => set("geralTexto", v)} />
+          <SistemaRow label="Geral" normal={EXAME_GERAL_NORMAL} alt={f.geralAlt} texto={f.geralTexto} onAlt={(v) => set("geralAlt", v)} onTexto={(v) => set("geralTexto", v)} />
           <Grid>
             <Field label="Fontanela anterior"><TextInput value={f.fant} onChange={(e) => set("fant", e.target.value)} placeholder="2x2" /></Field>
             <Field label="Fontanela posterior"><TextInput value={f.fpost} onChange={(e) => set("fpost", e.target.value)} placeholder="puntiforme" /></Field>
           </Grid>
-          <SistemaRow label="ACV" alt={f.acvAlt} texto={f.acvTexto} onAlt={(v) => set("acvAlt", v)} onTexto={(v) => set("acvTexto", v)} />
-          <SistemaRow label="AR" alt={f.arAlt} texto={f.arTexto} onAlt={(v) => set("arAlt", v)} onTexto={(v) => set("arTexto", v)} />
-          <SistemaRow label="Abdome" alt={f.abdomeAlt} texto={f.abdomeTexto} onAlt={(v) => set("abdomeAlt", v)} onTexto={(v) => set("abdomeTexto", v)} />
-          <SistemaRow label="Coto umbilical" alt={f.cotoAlt} texto={f.cotoTexto} onAlt={(v) => set("cotoAlt", v)} onTexto={(v) => set("cotoTexto", v)} />
-          <SistemaRow label="Genitália" alt={f.genitaliaAlt} texto={f.genitaliaTexto} onAlt={(v) => set("genitaliaAlt", v)} onTexto={(v) => set("genitaliaTexto", v)} />
-          <SistemaRow label="Membros" alt={f.membrosAlt} texto={f.membrosTexto} onAlt={(v) => set("membrosAlt", v)} onTexto={(v) => set("membrosTexto", v)} />
+          <SistemaRow label="ACV" normal={EXAME_ACV_NORMAL} alt={f.acvAlt} texto={f.acvTexto} onAlt={(v) => set("acvAlt", v)} onTexto={(v) => set("acvTexto", v)} />
+          <SistemaRow label="AR" normal={EXAME_AR_NORMAL} alt={f.arAlt} texto={f.arTexto} onAlt={(v) => set("arAlt", v)} onTexto={(v) => set("arTexto", v)} />
+          <SistemaRow label="Abdome" normal={EXAME_ABDOME_NORMAL} alt={f.abdomeAlt} texto={f.abdomeTexto} onAlt={(v) => set("abdomeAlt", v)} onTexto={(v) => set("abdomeTexto", v)} />
+          <SistemaRow label="Coto umbilical" normal={EXAME_COTO_NORMAL} alt={f.cotoAlt} texto={f.cotoTexto} onAlt={(v) => set("cotoAlt", v)} onTexto={(v) => set("cotoTexto", v)} />
+          <SistemaRow label="Genitália" normal={genitaliaNormal(f.sexo ?? null)} alt={f.genitaliaAlt} texto={f.genitaliaTexto} onAlt={(v) => set("genitaliaAlt", v)} onTexto={(v) => set("genitaliaTexto", v)} />
+          <SistemaRow label="Membros" normal={EXAME_MEMBROS_NORMAL} alt={f.membrosAlt} texto={f.membrosTexto} onAlt={(v) => set("membrosAlt", v)} onTexto={(v) => set("membrosTexto", v)} />
           <Field label="Reflexos (neurológico)">
             <div className="flex flex-wrap gap-2">
               {REFLEXOS_NEURO.map((r) => (
@@ -520,12 +658,14 @@ export default function EvolucaoPage() {
 
 function SistemaRow({
   label,
+  normal,
   alt,
   texto,
   onAlt,
   onTexto,
 }: {
   label: string;
+  normal: string;
   alt: boolean;
   texto: string;
   onAlt: (v: boolean) => void;
@@ -542,9 +682,36 @@ function SistemaRow({
           allowClear={false}
         />
       </div>
-      {alt && (
+      {alt ? (
         <TextArea className="mt-2" value={texto} onChange={(e) => onTexto(e.target.value)} placeholder={`Descreva alteração em ${label}`} />
+      ) : (
+        <p className="mt-2 rounded-lg bg-accent px-3 py-2 text-xs text-muted">{normal}</p>
       )}
     </div>
+  );
+}
+
+function TriRow({
+  label,
+  status,
+  data,
+  onStatus,
+  onData,
+}: {
+  label: string;
+  status: StatusTriagem;
+  data: string;
+  onStatus: (v?: StatusTriagem) => void;
+  onData: (v: string) => void;
+}) {
+  return (
+    <Field label={label}>
+      <SegGroup options={triagemOpts} value={status} onChange={onStatus} allowClear={false} />
+      {status !== "aguardo" && (
+        <div className="mt-1.5">
+          <TextInput type="date" value={data} onChange={(e) => onData(e.target.value)} className="max-w-[180px]" />
+        </div>
+      )}
+    </Field>
   );
 }

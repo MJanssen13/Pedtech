@@ -34,9 +34,9 @@ function isoDate(d?: string): string | undefined {
 
 function mapRh(v?: string): string | undefined {
   if (!v) return undefined;
-  if (/pos|^\+/i.test(v)) return "+";
-  if (/neg|^-/i.test(v)) return "-";
-  return v;
+  if (/pos|^\+/i.test(v)) return "positivo";
+  if (/neg|^-/i.test(v)) return "negativo";
+  return undefined;
 }
 
 function cleanABO(v?: string): string | undefined {

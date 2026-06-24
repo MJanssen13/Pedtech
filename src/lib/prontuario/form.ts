@@ -9,6 +9,12 @@ import type {
   TipoAlimentacao,
   StatusTriagem,
   StatusVacina,
+  Vinculo,
+  Pega,
+  Succao,
+  Producao,
+  Queixa,
+  ProfilaxiaModo,
 } from "@/lib/domain/types";
 import type { RenderInput } from "@/lib/prontuario/render";
 import type { PesoRegistro } from "@/lib/clinical/weight";
@@ -24,6 +30,12 @@ export interface PesoLinhaForm {
 export interface GlucoForm {
   hora: string;
   valor: string;
+}
+export interface HipoForm {
+  hora: string;
+  dtx: string;
+  correcao: "fmi" | "amamentacao";
+  fmiMl: string;
 }
 
 export interface EvolucaoForm {
@@ -57,11 +69,13 @@ export interface EvolucaoForm {
 
   // IG (texto livre)
   igDum: string;
+  igDumIncerta: boolean;
   igUsg: string;
   percentilFonte: "usg" | "dum"; // qual IG usar no percentil Intergrowth
 
   // Risco
   tempoBR: string;
+  profilaxiaModo?: ProfilaxiaModo; // undefined = preencher medicamento/data/hora
   profMedicamento: string;
   profData: string;
   profHora: string;
@@ -79,15 +93,14 @@ export interface EvolucaoForm {
 
   // Evolução (botões)
   acompanhantes: Acompanhante[];
-  vinculo: string;
-  pega?: "boa" | "inadequada";
-  succao?: "boa" | "ineficiente";
-  producao?: "baixa" | "adequada";
-  desconfortoResp: boolean;
-  complementacao: boolean;
-  compHora: string;
-  compDestro: string;
-  compMl: string;
+  acompanhanteOutro: string;
+  vinculo?: Vinculo;
+  vinculoJustificativa: string;
+  pega?: Pega;
+  succao?: Succao;
+  producao?: Producao;
+  queixas: Queixa[];
+  hipoglicemias: HipoForm[];
   outrasQueixas: string;
   diurese?: "presente" | "ausente";
   meconio?: "presente" | "ausente";
@@ -159,13 +172,13 @@ export function emptyForm(): EvolucaoForm {
     via: undefined, indicacaoCesarea: "", pesoNascimentoG: "", pcCm: "",
     comprimentoCm: "", apgar1: "", apgar5: "", nascimentoDescricao: "",
     pesoAtualG: "", pesos: [],
-    igDum: "", igUsg: "", percentilFonte: "usg",
-    tempoBR: "", profMedicamento: "", profData: "", profHora: "",
+    igDum: "", igDumIncerta: false, igUsg: "", percentilFonte: "usg",
+    tempoBR: "", profilaxiaModo: undefined, profMedicamento: "", profData: "", profHora: "",
     maeABO: "", maeRh: "", ci: "", rnABO: "", rnRh: "", cd: "",
     sorologias: "", diagnosticos: "",
-    acompanhantes: [], vinculo: "bom vínculo", pega: undefined, succao: undefined,
-    producao: undefined, desconfortoResp: false, complementacao: false,
-    compHora: "", compDestro: "", compMl: "", outrasQueixas: "",
+    acompanhantes: [], acompanhanteOutro: "", vinculo: "bom", vinculoJustificativa: "",
+    pega: undefined, succao: undefined, producao: undefined,
+    queixas: [], hipoglicemias: [], outrasQueixas: "",
     diurese: "presente", meconio: "presente",
     alimentacaoTipo: "AME", alimentacaoMl: "", alimentacaoIntervalo: "",
     intercorrencias: "", glucotestes: [],
@@ -206,7 +219,7 @@ export interface PercentisCalc {
 /** Percentis INTERGROWTH-21st a partir do sexo e da IG (DUM ou USG) escolhida. */
 export function computePercentis(f: EvolucaoForm): PercentisCalc {
   const fonte = f.percentilFonte;
-  const gaDias = parseIgToDays(fonte === "dum" ? f.igDum : f.igUsg);
+  const gaDias = parseIgToDays(fonte === "dum" ? (f.igDumIncerta ? "" : f.igDum) : f.igUsg);
   const sexo = f.sexo === "feminino" ? "F" : f.sexo === "masculino" ? "M" : null;
   if (!sexo || gaDias == null) return { gaDias, fonte };
   const fmt = (anthro: "weight" | "length" | "hc", v: number | null) =>
@@ -274,7 +287,12 @@ export function buildRenderInput(f: EvolucaoForm): RenderInput {
     sorologias_maternas: f.sorologias || null,
     risco: {
       tempoBR: f.tempoBR,
-      profilaxia: { medicamento: f.profMedicamento, data: f.profData, hora: f.profHora },
+      profilaxia: {
+        modo: f.profilaxiaModo ?? (f.profMedicamento ? "realizado" : undefined),
+        medicamento: f.profMedicamento,
+        data: f.profData,
+        hora: f.profHora,
+      },
     },
     diagnosticos: f.diagnosticos || null,
     created_by: null,
@@ -291,17 +309,21 @@ export function buildRenderInput(f: EvolucaoForm): RenderInput {
     peso_atual_g: num(f.pesoAtualG),
     evolucao: {
       acompanhantes: f.acompanhantes,
+      acompanhanteOutro: f.acompanhanteOutro,
       vinculo: f.vinculo,
+      vinculoJustificativa: f.vinculoJustificativa,
       pega: f.pega,
-      succao: f.succao,
+      succao: f.pega === "nao_realizada" ? undefined : f.succao,
       producao: f.producao,
-      desconfortoRespiratorio: f.desconfortoResp,
-      complementacao: {
-        realizada: f.complementacao,
-        hora: f.compHora,
-        destro: num(f.compDestro) ?? undefined,
-        quantidadeMl: num(f.compMl) ?? undefined,
-      },
+      queixas: f.queixas,
+      hipoglicemias: f.hipoglicemias
+        .filter((h) => h.hora || h.dtx || h.fmiMl || h.correcao === "amamentacao")
+        .map((h) => ({
+          hora: h.hora || undefined,
+          dtx: num(h.dtx) ?? undefined,
+          amamentacao: h.correcao === "amamentacao",
+          fmiMl: h.correcao === "fmi" ? num(h.fmiMl) ?? undefined : undefined,
+        })),
       outrasQueixas: f.outrasQueixas,
       diurese: f.diurese,
       meconio: f.meconio,
@@ -369,7 +391,7 @@ export function buildRenderInput(f: EvolucaoForm): RenderInput {
     patient,
     evolution,
     pesos,
-    ig: { dum: f.igDum, usg: f.igUsg },
+    ig: { dum: f.igDumIncerta ? "incerta" : f.igDum, usg: f.igUsg },
     percentis: { peso: perc.peso, pc: perc.pc, comprimento: perc.comprimento },
   };
 }

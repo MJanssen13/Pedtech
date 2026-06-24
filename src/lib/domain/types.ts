@@ -19,7 +19,9 @@ export interface Tipagem {
   cd?: string; // Coombs direto
 }
 
+export type ProfilaxiaModo = 'nao_se_aplica' | 'nao_realizado' | 'realizado';
 export interface Profilaxia {
+  modo?: ProfilaxiaModo;
   medicamento?: string; // ex.: Penicilina G benzatina
   data?: string;
   hora?: string;
@@ -74,24 +76,32 @@ export interface Patient {
 }
 
 // ───────────────────────────── Evolução ─────────────────────────────
-export type Acompanhante = 'mae' | 'pai' | 'avo' | 'outro';
+export type Acompanhante = 'mae' | 'pai' | 'avo' | 'tia' | 'irma' | 'outro';
 export type TipoAlimentacao = 'AME' | 'FMI' | 'AMM' | 'AMP' | 'AMC';
+export type Vinculo = 'bom' | 'moderado' | 'prejudicado';
+export type Pega = 'boa' | 'dificultosa' | 'nao_realizada';
+export type Succao = 'adequada' | 'ineficiente' | 'dolorosa';
+export type Producao = 'aumentada' | 'adequada' | 'reduzida';
+export type Queixa = 'desconforto_respiratorio' | 'colicas' | 'vomitos';
 
-export interface Complementacao {
-  realizada: boolean;
+/** Momento de hipoglicemia: DTX/quantidade de FMI OU amamentação realizada. */
+export interface Hipoglicemia {
   hora?: string;
-  destro?: number; // glicemia capilar
-  quantidadeMl?: number;
+  dtx?: number;
+  fmiMl?: number;
+  amamentacao?: boolean; // true = corrigida com amamentação, sem FMI
 }
 
 export interface BlocoEvolucao {
   acompanhantes?: Acompanhante[];
-  vinculo?: string; // bom vínculo | distanciamento | outro
-  pega?: 'boa' | 'inadequada';
-  succao?: 'boa' | 'ineficiente';
-  producao?: 'baixa' | 'adequada';
-  desconfortoRespiratorio?: boolean;
-  complementacao?: Complementacao;
+  acompanhanteOutro?: string; // parentesco quando "outro"
+  vinculo?: Vinculo;
+  vinculoJustificativa?: string; // quando moderado
+  pega?: Pega;
+  succao?: Succao;
+  producao?: Producao;
+  queixas?: Queixa[];
+  hipoglicemias?: Hipoglicemia[];
   outrasQueixas?: string;
   diurese?: 'presente' | 'ausente';
   meconio?: 'presente' | 'ausente';

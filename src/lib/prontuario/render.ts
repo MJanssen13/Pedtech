@@ -49,39 +49,71 @@ function apgarTexto(apgar: Patient['apgar']): string {
 /** Compõe a frase de EVOLUÇÃO a partir dos botões. */
 export function composeEvolucao(sexo: Sexo | null, b: BlocoEvolucao): string {
   const f = sexo === 'feminino';
+  const acompMap: Record<string, string> = { mae: 'mãe', pai: 'pai', avo: 'avó', tia: 'tia', irma: 'irmã' };
   const acomp = (b.acompanhantes ?? []).map((a) =>
-    a === 'mae' ? 'mãe' : a === 'pai' ? 'pai' : a === 'avo' ? 'avó' : 'acompanhante',
+    a === 'outro' ? b.acompanhanteOutro?.trim() || 'acompanhante' : acompMap[a] ?? 'acompanhante',
   );
   const acompTxt =
     acomp.length > 0
-      ? `acompanhad${f ? 'a' : 'o'} ${acomp.length > 1 ? 'por ' : ''}${listar(acomp, true)}`
+      ? `acompanhad${f ? 'a' : 'o'} ${acomp.length > 1 ? 'por ' : ''}${listar(acomp)}`
+      : '';
+  const vincMap: Record<string, string> = {
+    bom: 'em bom vínculo',
+    moderado: 'em vínculo moderado',
+    prejudicado: 'com vínculo prejudicado',
+  };
+  const vinc = b.vinculo ? vincMap[b.vinculo] : '';
+  const vincJust =
+    b.vinculo === 'moderado' && b.vinculoJustificativa?.trim()
+      ? ` (${b.vinculoJustificativa.trim()})`
       : '';
   const partes: string[] = [];
   partes.push(
     `Avalio RN em leito de alojamento conjunto${acompTxt ? ', ' + acompTxt : ''}${
-      b.vinculo ? `, ${b.vinculo}` : ''
+      vinc ? ', ' + vinc + vincJust : ''
     }.`,
   );
   const achados: string[] = [];
-  if (b.pega) achados.push(b.pega === 'boa' ? 'boa pega' : 'pega inadequada');
-  if (b.succao) achados.push(b.succao === 'boa' ? 'boa sucção' : 'sucção ineficiente');
+  if (b.pega)
+    achados.push(b.pega === 'boa' ? 'boa pega' : b.pega === 'dificultosa' ? 'pega dificultosa' : 'amamentação não realizada');
+  if (b.pega !== 'nao_realizada' && b.succao)
+    achados.push(
+      b.succao === 'adequada' ? 'sucção adequada' : b.succao === 'ineficiente' ? 'sucção ineficiente' : 'sucção dolorosa',
+    );
   if (b.producao)
-    achados.push(b.producao === 'adequada' ? 'produção láctea adequada' : 'baixa produção láctea');
+    achados.push(
+      b.producao === 'aumentada'
+        ? 'produção láctea aumentada'
+        : b.producao === 'adequada'
+          ? 'produção láctea adequada'
+          : 'produção láctea reduzida',
+    );
   if (achados.length) partes.push(`Apresenta ${listar(achados)}.`);
-  partes.push(
-    b.desconfortoRespiratorio ? 'Com desconforto respiratório.' : 'Sem desconforto respiratório.',
-  );
-  if (b.complementacao?.realizada) {
-    const c = b.complementacao;
-    const det = [
-      c.hora ? `às ${c.hora}` : '',
-      c.destro != null ? `destro ${c.destro}` : '',
-      c.quantidadeMl != null ? `${c.quantidadeMl} ml` : '',
-    ]
-      .filter(Boolean)
-      .join(', ');
-    partes.push(`Necessitou complementação${det ? ` (${det})` : ''}.`);
+
+  const qMap: Record<string, string> = {
+    desconforto_respiratorio: 'desconforto respiratório',
+    colicas: 'cólicas',
+    vomitos: 'vômitos',
+  };
+  const qs = (b.queixas ?? []).map((q) => qMap[q]).filter(Boolean);
+  if (qs.length) partes.push(`Apresenta ${listar(qs)}.`);
+
+  if (b.hipoglicemias?.length) {
+    const hs = b.hipoglicemias
+      .map((h) => {
+        const corr = h.amamentacao
+          ? 'corrigida com amamentação'
+          : h.fmiMl != null
+            ? `${h.fmiMl} ml de FMI`
+            : '';
+        return [h.hora ? `às ${h.hora}` : '', h.dtx != null ? `DTX ${h.dtx}` : '', corr]
+          .filter(Boolean)
+          .join(', ');
+      })
+      .filter(Boolean);
+    if (hs.length) partes.push(`Episódio(s) de hipoglicemia: ${hs.join('; ')}.`);
   }
+
   partes.push(b.outrasQueixas?.trim() ? b.outrasQueixas.trim() : 'Nega demais queixas.');
   return partes.join(' ');
 }
@@ -168,9 +200,14 @@ export function renderProntuario({ patient: p, evolution: e, pesos, percentis, i
 
   push('RISCO INFECCIOSO:');
   const prof = p.risco?.profilaxia;
-  const profTxt = prof?.medicamento
-    ? `${prof.medicamento}${prof.data ? ` (${fmtData(prof.data)}${prof.hora ? ` ${prof.hora}` : ''})` : ''}`
-    : 'Não se aplica';
+  const profTxt =
+    prof?.modo === 'nao_se_aplica'
+      ? 'Não se aplica'
+      : prof?.modo === 'nao_realizado'
+        ? 'Não realizada'
+        : prof?.medicamento
+          ? `${prof.medicamento}${prof.data ? ` (${fmtData(prof.data)}${prof.hora ? ` ${prof.hora}` : ''})` : ''}`
+          : 'Não se aplica';
   push(`${M}Tempo de BR: ${p.risco?.tempoBR ?? ''} ${M}Profilaxia (data e hora): ${profTxt}`);
   push(SEP);
 
@@ -208,7 +245,7 @@ export function renderProntuario({ patient: p, evolution: e, pesos, percentis, i
   const cor = e.triagem?.coracaozinho;
   const corSat =
     cor && (cor.satMSD != null || cor.satMembroInferior != null)
-      ? ` MSD ${cor.satMSD ?? '-'}/ MIE ${cor.satMembroInferior ?? '-'}`
+      ? ` MSD ${cor.satMSD ?? '-'}/ MID ${cor.satMembroInferior ?? '-'}`
       : '';
   push(
     `${M}Teste do Coraçãozinho: ${cor ? statusTxt(cor.status) + corSat + dataTxt(cor.data) : 'Aguardo'}`,
@@ -279,7 +316,7 @@ function horaDe(iso?: string | null): string {
 }
 function tip(abo?: string, rh?: string): string {
   if (!abo && !rh) return 'aguardo';
-  return `${abo ?? ''}${rh ? (abo ? rh : rh) : ''}`.trim() || 'aguardo';
+  return `${abo ?? ''}${rh ? ` ${rh}` : ''}`.trim() || 'aguardo';
 }
 function presAus(v?: string): string {
   return v === 'presente' ? '+' : v === 'ausente' ? '-' : '';
