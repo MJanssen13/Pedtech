@@ -111,6 +111,7 @@ export interface EvolucaoForm {
   succao?: Succao;
   producao?: Producao;
   queixas: Queixa[];
+  emRelactacao: boolean;
   hipoglicemias: HipoForm[];
   outrasQueixas: string;
   diurese?: "presente" | "ausente";
@@ -136,7 +137,7 @@ export interface EvolucaoForm {
   linguinhaData: string;
   orelhinha: StatusTriagem;
   orelhinhaData: string;
-  pezinho: StatusTriagem;
+  pezinho: "aguardo" | "coletado";
   pezinhoData: string;
 
   // Vacinação
@@ -197,7 +198,7 @@ export function emptyForm(): EvolucaoForm {
     sorologias: "", diagnosticos: "",
     acompanhantes: [], acompanhanteOutro: "", vinculo: "bom", vinculoJustificativa: "",
     pega: undefined, succao: undefined, producao: undefined,
-    queixas: [], hipoglicemias: [], outrasQueixas: "",
+    queixas: [], emRelactacao: false, hipoglicemias: [], outrasQueixas: "",
     diurese: "presente", meconio: "presente",
     alimentacaoTipo: "AME", alimentacaoMl: "", alimentacaoIntervalo: "",
     intercorrencias: "", gluco24hModo: undefined, gluco24h: {}, glucotestes: [],
@@ -224,6 +225,11 @@ const num = (s: string): number | null => {
   const n = Number(String(s).replace(",", ".").replace(/[^\d.-]/g, ""));
   return s.trim() === "" || Number.isNaN(n) ? null : n;
 };
+
+/** Modos que pedem quantidade de FMI. */
+export const usaQuantidade = (t?: TipoAlimentacao) => t === "FMI" || t === "AMM";
+/** Modos que envolvem fórmula infantil (mostram "em relactação"). */
+export const envolveFormula = (t?: TipoAlimentacao) => t === "FMI" || t === "AMM" || t === "AMC";
 
 function sistema(alt: boolean, texto: string) {
   return { estado: alt ? ("alterado" as const) : ("normal" as const), texto };
@@ -252,6 +258,24 @@ export function computePercentis(f: EvolucaoForm): PercentisCalc {
     gaDias,
     fonte,
   };
+}
+
+/**
+ * Série de peso: nascimento (1º dado) → seriados → hoje (peso do exame físico).
+ * O peso de nascimento entra automaticamente se nenhum registro estiver marcado
+ * como nascimento.
+ */
+export function buildPesos(f: EvolucaoForm): PesoRegistro[] {
+  const pesos: PesoRegistro[] = f.pesos
+    .filter((p) => p.gramas)
+    .map((p) => ({ data: p.data, gramas: Number(p.gramas), nascimento: p.nascimento }));
+  const pesoNasc = num(f.pesoNascimentoG);
+  if (!pesos.some((p) => p.nascimento) && pesoNasc != null && f.dn) {
+    pesos.push({ data: f.dn, gramas: pesoNasc, nascimento: true });
+  }
+  const atual = num(f.pesoAtualG);
+  if (atual != null) pesos.push({ data: f.dataEvolucao, gramas: atual });
+  return pesos;
 }
 
 export function buildRenderInput(f: EvolucaoForm): RenderInput {
@@ -345,13 +369,15 @@ export function buildRenderInput(f: EvolucaoForm): RenderInput {
           amamentacao: h.correcao === "amamentacao",
           fmiMl: h.correcao === "fmi" ? num(h.fmiMl) ?? undefined : undefined,
         })),
+      emRelactacao: f.emRelactacao,
       outrasQueixas: f.outrasQueixas,
       diurese: f.diurese,
       meconio: f.meconio,
       alimentacao: {
         tipo: f.alimentacaoTipo,
-        quantidadeMl: num(f.alimentacaoMl) ?? undefined,
-        intervalo: f.alimentacaoIntervalo,
+        // quantidade só vale para modos que usam FMI
+        quantidadeMl: usaQuantidade(f.alimentacaoTipo) ? num(f.alimentacaoMl) ?? undefined : undefined,
+        intervalo: usaQuantidade(f.alimentacaoTipo) ? f.alimentacaoIntervalo : "",
       },
     },
     intercorrencias: f.intercorrencias || null,
@@ -412,14 +438,7 @@ export function buildRenderInput(f: EvolucaoForm): RenderInput {
     created_by: null,
   } satisfies Evolution;
 
-  // Série de peso: históricos + peso atual de hoje
-  const pesos: PesoRegistro[] = [
-    ...f.pesos
-      .filter((p) => p.gramas)
-      .map((p) => ({ data: p.data, gramas: Number(p.gramas), nascimento: p.nascimento })),
-  ];
-  const atual = num(f.pesoAtualG);
-  if (atual != null) pesos.push({ data: f.dataEvolucao, gramas: atual });
+  const pesos = buildPesos(f);
 
   const perc = computePercentis(f);
 

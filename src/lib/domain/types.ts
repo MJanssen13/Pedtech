@@ -81,7 +81,7 @@ export type TipoAlimentacao = 'AME' | 'FMI' | 'AMM' | 'AMP' | 'AMC';
 export type Vinculo = 'bom' | 'moderado' | 'prejudicado';
 export type Pega = 'boa' | 'dificultosa' | 'nao_realizada';
 export type Succao = 'adequada' | 'ineficiente' | 'dolorosa';
-export type Producao = 'aumentada' | 'adequada' | 'reduzida';
+export type Producao = 'aumentada' | 'adequada' | 'reduzida' | 'inexistente';
 export type Queixa = 'desconforto_respiratorio' | 'colicas' | 'vomitos';
 
 /** Momento de hipoglicemia: DTX/quantidade de FMI OU amamentação realizada. */
@@ -101,6 +101,7 @@ export interface BlocoEvolucao {
   succao?: Succao;
   producao?: Producao;
   queixas?: Queixa[];
+  emRelactacao?: boolean;
   hipoglicemias?: Hipoglicemia[];
   outrasQueixas?: string;
   diurese?: 'presente' | 'ausente';
@@ -131,7 +132,7 @@ export interface Triagem {
   coracaozinho?: TriagemCoracaozinho;
   linguinha?: { status: StatusTriagem; data?: string; bristol?: number; tabby?: number };
   orelhinha?: { status: StatusTriagem; data?: string };
-  pezinho?: { status: StatusTriagem; data?: string };
+  pezinho?: { status: 'aguardo' | 'coletado'; data?: string };
 }
 
 export interface Vacinacao {

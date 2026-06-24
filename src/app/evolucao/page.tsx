@@ -15,7 +15,10 @@ import {
 import {
   emptyForm,
   buildRenderInput,
+  buildPesos,
   computePercentis,
+  usaQuantidade,
+  envolveFormula,
   GLUCO_24H,
   type EvolucaoForm,
 } from "@/lib/prontuario/form";
@@ -83,8 +86,8 @@ export default function EvolucaoPage() {
 
   const triagem =
     (
-      statusKey: "olhinho" | "coracaozinho" | "orelhinha" | "pezinho",
-      dataKey: "olhinhoData" | "coracaozinhoData" | "orelhinhaData" | "pezinhoData",
+      statusKey: "olhinho" | "coracaozinho" | "orelhinha",
+      dataKey: "olhinhoData" | "coracaozinhoData" | "orelhinhaData",
     ) =>
     (v?: StatusTriagem) =>
       setForm((prev) => {
@@ -108,14 +111,10 @@ export default function EvolucaoPage() {
     }
   }, [f.dn, f.hn, f.dataEvolucao, f.corteHorario]);
 
-  const trendPeso = useMemo(() => {
-    const serie = f.pesos
-      .filter((p) => p.gramas)
-      .map((p) => ({ data: p.data, gramas: Number(p.gramas), nascimento: p.nascimento }));
-    const atual = Number(String(f.pesoAtualG).replace(",", "."));
-    if (f.pesoAtualG.trim() && !Number.isNaN(atual)) serie.push({ data: f.dataEvolucao, gramas: atual, nascimento: false });
-    return calcularTendenciaPeso(serie);
-  }, [f.pesos, f.pesoAtualG, f.dataEvolucao]);
+  const trendPeso = useMemo(
+    () => calcularTendenciaPeso(buildPesos(f)),
+    [f.pesos, f.pesoAtualG, f.pesoNascimentoG, f.dn, f.dataEvolucao],
+  );
 
   const perc = useMemo(() => computePercentis(f), [f]);
   const percHint = (s?: string) =>
@@ -384,14 +383,15 @@ export default function EvolucaoPage() {
                   { value: "aumentada", label: "Aumentada" },
                   { value: "adequada", label: "Adequada" },
                   { value: "reduzida", label: "Reduzida" },
+                  { value: "inexistente", label: "Inexistente" },
                 ]}
                 value={f.producao}
                 onChange={(v) => set("producao", v)}
               />
             </Field>
           </Grid>
-          {f.vinculo === "moderado" && (
-            <Field label="Justificativa do vínculo moderado (opcional)">
+          {(f.vinculo === "moderado" || f.vinculo === "prejudicado") && (
+            <Field label={`Justificativa do vínculo ${f.vinculo} (opcional)`}>
               <TextInput value={f.vinculoJustificativa} onChange={(e) => set("vinculoJustificativa", e.target.value)} />
             </Field>
           )}
@@ -426,15 +426,29 @@ export default function EvolucaoPage() {
                   { value: "AMC", label: "AMC" },
                 ]}
                 value={f.alimentacaoTipo}
-                onChange={(v) => set("alimentacaoTipo", v)}
+                onChange={(v) =>
+                  setForm((prev) => {
+                    const next = { ...prev, alimentacaoTipo: v };
+                    // ao trocar para um modo sem quantidade, limpa o que ficou salvo
+                    if (!usaQuantidade(v)) {
+                      next.alimentacaoMl = "";
+                      next.alimentacaoIntervalo = "";
+                    }
+                    if (!envolveFormula(v)) next.emRelactacao = false;
+                    return next;
+                  })
+                }
               />
             </Field>
           </Grid>
-          {(f.alimentacaoTipo === "FMI" || f.alimentacaoTipo === "AMM") && (
+          {usaQuantidade(f.alimentacaoTipo) && (
             <Grid>
-              <Field label="Quantidade (ml)"><TextInput inputMode="numeric" value={f.alimentacaoMl} onChange={(e) => set("alimentacaoMl", e.target.value)} /></Field>
+              <Field label="Quantidade de FMI (ml)"><TextInput inputMode="numeric" value={f.alimentacaoMl} onChange={(e) => set("alimentacaoMl", e.target.value)} /></Field>
               <Field label="Intervalo"><TextInput value={f.alimentacaoIntervalo} onChange={(e) => set("alimentacaoIntervalo", e.target.value)} placeholder="3/3h" /></Field>
             </Grid>
+          )}
+          {envolveFormula(f.alimentacaoTipo) && (
+            <Checkbox label="Em relactação" checked={f.emRelactacao} onChange={(v) => set("emRelactacao", v)} />
           )}
         </Section>
 
@@ -590,7 +604,30 @@ export default function EvolucaoPage() {
             )}
           </Field>
           <TriRow label="Orelhinha" status={f.orelhinha} data={f.orelhinhaData} onStatus={triagem("orelhinha", "orelhinhaData")} onData={(d) => set("orelhinhaData", d)} />
-          <TriRow label="Pezinho" status={f.pezinho} data={f.pezinhoData} onStatus={triagem("pezinho", "pezinhoData")} onData={(d) => set("pezinhoData", d)} />
+          <Field label="Pezinho">
+            <SegGroup
+              options={[
+                { value: "aguardo", label: "Aguardo" },
+                { value: "coletado", label: "Coletado" },
+              ]}
+              value={f.pezinho}
+              onChange={(v) =>
+                setForm((prev) => {
+                  const status = (v ?? "aguardo") as "aguardo" | "coletado";
+                  const next = { ...prev, pezinho: status };
+                  if (status === "coletado" && !prev.pezinhoData) next.pezinhoData = hojeStr();
+                  if (status === "aguardo") next.pezinhoData = "";
+                  return next;
+                })
+              }
+              allowClear={false}
+            />
+            {f.pezinho === "coletado" && (
+              <div className="mt-1.5">
+                <TextInput type="date" value={f.pezinhoData} onChange={(e) => set("pezinhoData", e.target.value)} className="max-w-[180px]" />
+              </div>
+            )}
+          </Field>
         </Section>
 
         <Section title="Vacinação">

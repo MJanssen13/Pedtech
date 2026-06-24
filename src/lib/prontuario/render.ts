@@ -64,7 +64,7 @@ export function composeEvolucao(sexo: Sexo | null, b: BlocoEvolucao): string {
   };
   const vinc = b.vinculo ? vincMap[b.vinculo] : '';
   const vincJust =
-    b.vinculo === 'moderado' && b.vinculoJustificativa?.trim()
+    (b.vinculo === 'moderado' || b.vinculo === 'prejudicado') && b.vinculoJustificativa?.trim()
       ? ` (${b.vinculoJustificativa.trim()})`
       : '';
   const partes: string[] = [];
@@ -80,14 +80,15 @@ export function composeEvolucao(sexo: Sexo | null, b: BlocoEvolucao): string {
     achados.push(
       b.succao === 'adequada' ? 'sucção adequada' : b.succao === 'ineficiente' ? 'sucção ineficiente' : 'sucção dolorosa',
     );
-  if (b.producao)
-    achados.push(
-      b.producao === 'aumentada'
-        ? 'produção láctea aumentada'
-        : b.producao === 'adequada'
-          ? 'produção láctea adequada'
-          : 'produção láctea reduzida',
-    );
+  if (b.producao) {
+    const prodMap: Record<string, string> = {
+      aumentada: 'aumentada',
+      adequada: 'adequada',
+      reduzida: 'reduzida',
+      inexistente: 'inexistente',
+    };
+    achados.push(`produção láctea materna ${prodMap[b.producao] ?? b.producao}`);
+  }
   if (achados.length) partes.push(`Apresenta ${listar(achados)}.`);
 
   const qMap: Record<string, string> = {
@@ -222,8 +223,9 @@ export function renderProntuario({ patient: p, evolution: e, pesos, percentis, i
 
   push(`EVOLUÇÃO: ${composeEvolucao(p.sexo, e.evolucao ?? {})}`);
   const alim = e.evolucao?.alimentacao;
+  const relac = e.evolucao?.emRelactacao ? ' (em relactação)' : '';
   const alimTxt = alim?.tipo
-    ? `${alim.tipo}${alim.quantidadeMl ? ` ${alim.quantidadeMl}ml` : ''}${alim.intervalo ? ` ${alim.intervalo}` : ''}${alim.detalhe ? ` (${alim.detalhe})` : ''}`
+    ? `${alim.tipo}${alim.quantidadeMl ? ` ${alim.quantidadeMl}ml` : ''}${alim.intervalo ? ` ${alim.intervalo}` : ''}${alim.detalhe ? ` (${alim.detalhe})` : ''}${relac}`
     : '';
   push(
     `Diurese: ${presAus(e.evolucao?.diurese)} / Mecônio: ${presAus(e.evolucao?.meconio)} / Alimentação: ${alimTxt}`,
@@ -262,13 +264,15 @@ export function renderProntuario({ patient: p, evolution: e, pesos, percentis, i
   const ling = e.triagem?.linguinha;
   const lingTxt =
     ling?.tabby != null
-      ? `TABBY ${ling.tabby}/8${dataTxt(ling.data)}`
+      ? `Bristol ${ling.tabby}${dataTxt(ling.data)}`
       : ling?.bristol != null
         ? `Bristol ${ling.bristol}`
         : triagemTxt(ling);
   push(`${M}Teste da Linguinha: ${lingTxt}`);
   push(`${M}Teste da Orelhinha: ${triagemTxt(e.triagem?.orelhinha)}`);
-  push(`${M}Teste do Pezinho: ${triagemTxt(e.triagem?.pezinho)}`);
+  const pez = e.triagem?.pezinho;
+  const pezTxt = pez?.status === 'coletado' ? `Coletado${pez.data ? ` (em ${fmtData(pez.data)})` : ''}` : 'Aguardo';
+  push(`${M}Teste do Pezinho: ${pezTxt}`);
   push(SEP);
 
   push('VACINAÇÃO');
@@ -332,7 +336,7 @@ function tip(abo?: string, rh?: string): string {
   return `${abo ?? ''}${rh ? ` ${rh}` : ''}`.trim() || 'aguardo';
 }
 function presAus(v?: string): string {
-  return v === 'presente' ? '+' : v === 'ausente' ? '-' : '';
+  return v === 'presente' ? 'presente' : v === 'ausente' ? 'ausente' : '';
 }
 function sinalNum(n: number | null): string {
   if (n == null) return '';
