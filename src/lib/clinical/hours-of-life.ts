@@ -22,11 +22,24 @@ export function horarioDeCortePadrao(
   diaEvolucao: Date | string = new Date(),
   horaCorte = '08:00',
 ): Date {
-  const d = toDate(diaEvolucao);
   const [h, m] = horaCorte.split(':').map(Number);
-  const corte = new Date(d);
-  corte.setHours(h, m ?? 0, 0, 0);
-  return corte;
+  let y: number;
+  let mo: number;
+  let da: number;
+  if (typeof diaEvolucao === 'string') {
+    // 'YYYY-MM-DD' (date-only) deve ser interpretado em horário LOCAL, não UTC —
+    // senão em fuso negativo o corte cai no dia anterior.
+    const mt = diaEvolucao.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (mt) {
+      [y, mo, da] = [Number(mt[1]), Number(mt[2]) - 1, Number(mt[3])];
+    } else {
+      const d = new Date(diaEvolucao);
+      [y, mo, da] = [d.getFullYear(), d.getMonth(), d.getDate()];
+    }
+  } else {
+    [y, mo, da] = [diaEvolucao.getFullYear(), diaEvolucao.getMonth(), diaEvolucao.getDate()];
+  }
+  return new Date(y, mo, da, h, m || 0, 0, 0);
 }
 
 export interface HorasDeVida {
