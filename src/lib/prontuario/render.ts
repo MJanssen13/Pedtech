@@ -178,18 +178,27 @@ export function renderProntuario({ patient: p, evolution: e, pesos, percentis, i
 
   // Acompanhamento de peso
   const trend = calcularTendenciaPeso(pesos);
-  push(`${M}Peso atual: ${e.peso_atual_g ? `${e.peso_atual_g}g` : ''}`);
+  const atual = trend[0];
+  const pctTxt = (v: number | null) => (v != null ? ` (${sinalNum(v)}%)` : '');
+  // Peso atual (com variação diária)
+  const dailyAtual = atual?.gPorDia != null ? `  ${sinalNum(atual.gPorDia)}g/dia${pctTxt(atual.percentual)}` : '';
+  push(`${M}Peso atual${atual ? ` (${dm(atual.data)})` : ''}: ${e.peso_atual_g ? `${e.peso_atual_g}g` : ''}${dailyAtual}`);
+  // Dias intermediários (exclui o atual e o nascimento)
   for (const linha of trend.slice(1)) {
-    if (linha.nascimento) {
-      const sinal = (linha.deltaDesdeNascimento ?? 0) > 0 ? '+' : '';
-      push(
-        `${M}Peso de nascimento (${dm(linha.data)}): ${linha.gramas}g — Variação desde o nascimento ${sinal}${linha.deltaDesdeNascimento}g (${linha.percentualDesdeNascimento}%)`,
-      );
-    } else {
-      push(
-        `${M}(${dm(linha.data)}): ${linha.gramas}g — Variação de ${sinalNum(linha.gPorDia)}g/dia (${sinalNum(linha.percentual)}%)`,
-      );
-    }
+    if (linha.nascimento) continue;
+    push(`${M}(${dm(linha.data)}): ${linha.gramas}g  Variação de ${sinalNum(linha.gPorDia)}g/dia${pctTxt(linha.percentual)}`);
+  }
+  // Variação desde o nascimento (sempre que houver peso de nascimento e atual) — usa atual vs nascimento
+  const nascLinha = trend.find((l) => l.nascimento);
+  if (p.peso_nascimento_g && e.peso_atual_g != null) {
+    const d = e.peso_atual_g - p.peso_nascimento_g;
+    const pct = Math.round((d / p.peso_nascimento_g) * 10000) / 100;
+    const prefixo = nascLinha
+      ? `Peso de nascimento (${dm(nascLinha.data)}): ${p.peso_nascimento_g}g  Variação desde o nascimento`
+      : 'Variação de peso desde o nascimento:';
+    push(`${M}${prefixo} ${sinalNum(d)}g (${sinalNum(pct)}%)`);
+  } else if (nascLinha) {
+    push(`${M}Peso de nascimento (${dm(nascLinha.data)}): ${nascLinha.gramas}g`);
   }
   push(SEP);
 
