@@ -75,6 +75,7 @@ const vacinaOpts: { value: StatusVacina; label: string }[] = [
 export default function EvolucaoPage() {
   const [f, setForm] = useState<EvolucaoForm>(emptyForm);
   const [capurroOpen, setCapurroOpen] = useState(false);
+  const [biliAtivo, setBiliAtivo] = useState(false);
   const set = <K extends keyof EvolucaoForm>(k: K, v: EvolucaoForm[K]) =>
     setForm((prev) => ({ ...prev, [k]: v }));
 
@@ -134,7 +135,7 @@ export default function EvolucaoPage() {
   };
 
   return (
-    <div className="grid gap-5 lg:grid-cols-[1fr_minmax(320px,440px)]">
+    <div className="grid gap-5 pb-20 lg:grid-cols-[1fr_minmax(320px,440px)] lg:pb-0">
       {/* ─────────────── FORMULÁRIO ─────────────── */}
       <div>
         <h1 className="mb-3 text-lg font-semibold">Nova evolução</h1>
@@ -737,13 +738,20 @@ export default function EvolucaoPage() {
           </div>
         </Section>
 
-        <Section title="Bilirrubina (BiliTool / AAP 2022)">
-          <BilirubinaPanel
-            semanasIniciais={perc.gaDias ? Math.floor(perc.gaDias / 7) : undefined}
-            nascimentoEm={f.dn ? `${f.dn}T${f.hn || "00:00"}` : undefined}
-            bilicheck={f.bilicheckValor ? { valor: f.bilicheckValor, data: f.bilicheckData, hora: f.bilicheckHora } : undefined}
-            examesComplementares={f.examesComplementares}
-          />
+        <Section
+          title="Bilirrubina (BiliTool / AAP 2022)"
+          right={<Checkbox label="Realizar" checked={biliAtivo} onChange={setBiliAtivo} />}
+        >
+          {biliAtivo ? (
+            <BilirubinaPanel
+              semanasIniciais={perc.gaDias ? Math.floor(perc.gaDias / 7) : undefined}
+              nascimentoEm={f.dn ? `${f.dn}T${f.hn || "00:00"}` : undefined}
+              bilicheck={f.bilicheckValor ? { valor: f.bilicheckValor, data: f.bilicheckData, hora: f.bilicheckHora } : undefined}
+              examesComplementares={f.examesComplementares}
+            />
+          ) : (
+            <p className="text-xs text-muted">Marque &quot;Realizar&quot; para abrir a avaliação de bilirrubina (BiliTool).</p>
+          )}
         </Section>
 
         <Section
@@ -806,6 +814,13 @@ export default function EvolucaoPage() {
 {texto}
           </pre>
         </div>
+      </div>
+
+      {/* Barra fixa de copiar — só no celular */}
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-card/95 p-2 backdrop-blur lg:hidden">
+        <button type="button" onClick={copiar} className="w-full rounded-md bg-primary py-2.5 text-sm font-medium text-white">
+          {copiado ? "Copiado ✓" : "Copiar para o prontuário"}
+        </button>
       </div>
     </div>
   );

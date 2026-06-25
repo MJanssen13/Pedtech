@@ -180,8 +180,12 @@ export function renderProntuario({ patient: p, evolution: e, pesos, percentis, i
   const trend = calcularTendenciaPeso(pesos);
   const atual = trend[0];
   const pctTxt = (v: number | null) => (v != null ? ` (${sinalNum(v)}%)` : '');
-  // Peso atual (com variação diária)
-  const dailyAtual = atual?.gPorDia != null ? `  ${sinalNum(atual.gPorDia)}g/dia${pctTxt(atual.percentual)}` : '';
+  // Peso atual (com variação diária). No 1º dia (só nascimento + hoje, sem dia
+  // intermediário) não mostra g/dia — não há tendência diária ainda.
+  const prev = trend[1];
+  const primeiroDia = !prev || prev.nascimento;
+  const dailyAtual =
+    !primeiroDia && atual?.gPorDia != null ? `  ${sinalNum(atual.gPorDia)}g/dia${pctTxt(atual.percentual)}` : '';
   push(`${M}Peso atual${atual ? ` (${dm(atual.data)})` : ''}: ${e.peso_atual_g ? `${e.peso_atual_g}g` : ''}${dailyAtual}`);
   // Dias intermediários (exclui o atual e o nascimento)
   for (const linha of trend.slice(1)) {
